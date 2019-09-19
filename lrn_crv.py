@@ -40,6 +40,7 @@ from scipy import optimize
 import ml_models
 
 
+# --------------------------------------------------------------------------------
 class LearningCurve():
     """
     Train estimator using multiple train set sizes and generate learning curves for multiple metrics.
@@ -51,7 +52,7 @@ class LearningCurve():
     def __init__(self,
             X, Y,
             cv=5,
-            cv_lists=None,
+            cv_lists=None,  # (tr_id, vl_id)
             n_shards: int=5,
             # shard_step_scale: str='log2',
             # shard_frac=[],
@@ -91,7 +92,8 @@ class LearningCurve():
 
         
     def create_fold_dcts(self):
-        """ Returns a tuple of two dicts (tr_dct, vl_dct) that contain the splits of all the folds. """
+        """ Converts a tuple of arrays self.cv_lists into two dicts, tr_dct and vl_dct.
+        Both sets of data structures contain the splits of all the k-folds. """
         tr_dct = {}
         vl_dct = {}
 
@@ -139,7 +141,8 @@ class LearningCurve():
 
 
     def create_tr_shards_list(self):
-        """ Generate the list of training shard sizes. """
+        """ Generate the list of training shard sizes.
+        TODO: at this point self.n_shards is not used since we all shrds. """
 #         if len(self.shard_frac)==0:
 #             # if any( [self.shard_step_scale.lower()==s for s in ['lin', 'linear']] ):
 #             scale = self.shard_step_scale.lower()
@@ -168,27 +171,26 @@ class LearningCurve():
         # --------------------------------------------
         # Fixed spacing
         if self.cv_folds == 1:
-            self.max_samples = int((1-self.vl_size) * self.X.shape[0])
+            self.max_samples = int( (1-self.vl_size) * self.X.shape[0] )
         else: 
-            self.max_samples = int((self.cv_folds-1)/self.cv_folds * self.X.shape[0])
+            self.max_samples = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
             
         # TODO need to add self.max_samples to the training vector
         v = 2 ** np.array(np.arange(30))[1:]
         idx = np.argmin( np.abs( v - self.max_samples ) )
         
-        if v[idx] > max_samples:
-            v = list(v[:idx])
-            v.append(max_samples)
+        if v[idx] > self.max_samples:
+            v = list(v[:idx])    # all values excluding the last one
+            v.append(self.max_samples)
         else:
             # v = list(v[:idx])
-            v = list(v[:idx+1])
-            v.append(max_samples)
+            v = list(v[:idx+1])  # all values including the last one
+            v.append(self.max_samples)
             # If the diff btw max_samples and the latest shards (v[-1] - v[-2]) is "too small", then remove max_samples from the possible shards.
-            if 0.5*v[-3] > (v[-1] - v[-2]):
-                print('here')
-                v = v[:-1]
+            if 0.5*v[-3] > (v[-1] - v[-2]): v = v[:-1]
         
-        self.tr_shards = v[:-self.n_shards]
+        # self.tr_shards = v[:-self.n_shards]
+        self.tr_shards = v
         # --------------------------------------------
         
         if self.logger is not None: self.logger.info('Train shards: {}\n'.format(self.tr_shards))
@@ -232,6 +234,7 @@ class LearningCurve():
         for fold, (tr_k, vl_k) in enumerate(zip( self.tr_dct.keys(), self.vl_dct.keys() )):
             if self.logger is not None: self.logger.info(f'Fold {fold+1}/{self.cv_folds}')
 
+            # Get the indices for this fold
             tr_id = self.tr_dct[tr_k]
             vl_id = self.vl_dct[vl_k]
 
@@ -244,8 +247,11 @@ class LearningCurve():
             yvl = np.squeeze(self.Y[vl_id, :])        
 
             # Shards loop (iterate across the dataset sizes and train)
-            # np.random.seed(random_state)
-            # idx = np.random.permutation(len(xtr))
+            """
+            np.random.seed(random_state)
+            idx = np.random.permutation(len(xtr))
+            Note that we don't shuffle the dataset another time using the commands above.
+            """
             idx = np.arange(len(xtr))
             for i, tr_sz in enumerate(self.tr_shards):
                 # For each shard: train model, save best model, calc tr_scores, calc_vl_scores
@@ -259,13 +265,19 @@ class LearningCurve():
                 estimator = ml_models.get_model(self.model_name, init_kwargs=self.init_kwargs)
                 model = estimator.model
                 
+                # HPO
+                # TODO: best HP should be used
+                pass
+                
                 # Train
                 # self.val_split = 0 # 0.1 # used for early stopping
                 self.eval_frac = 0.1 # 0.1 # used for early stopping
-                eval_samples = int(self.eval_frac*xvl.shape[0])
-                eval_set = (xvl[:eval_samples, :], yvl[:eval_samples])
+                eval_samples = int(self.eval_frac * xvl.shape[0])
+                eval_set = (xvl[:eval_samples, :], yvl[:eval_samples]) # we don't random sample; the same eval_set is used for early stopping
                 if self.framework=='lightgbm':
                     model, trn_outdir = self.trn_lgbm_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
+                elif self.framework=='sklearn':
+                    model, trn_outdir = self.trn_rf_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=None)
                 elif self.framework=='keras':
                     model, trn_outdir = self.trn_keras_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
                 elif self.framework=='pytorch':
@@ -300,9 +312,10 @@ class LearningCurve():
 
                 # Dump intermediate scores
                 # TODO: test this!
-                scores_tmp = pd.concat([scores_to_df(tr_scores_all), scores_to_df(vl_scores_all)], axis=0)
-                scores_tmp.to_csv( trn_outdir / ('tmp_scores.csv'), index=False )
-                del trn_outdir, tmp_scores
+                # scores_tmp = pd.concat([scores_to_df(tr_scores_all), scores_to_df(vl_scores_all)], axis=0)
+                scores_tmp = pd.concat([scores_to_df(tr_scores), scores_to_df(vl_scores)], axis=0)
+                scores_tmp.to_csv( trn_outdir / ('scores_tmp.csv'), index=False )
+                del trn_outdir, scores_tmp
                 
             # Dump intermediate results (this is useful if the run terminates before run ends)
             # tr_df_tmp = scores_to_df(tr_scores_all)
@@ -328,7 +341,7 @@ class LearningCurve():
 
 
     def trn_keras_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
-        """ ... """
+        """ Train and save Keras model. """
         keras.utils.plot_model(model, to_file=self.outdir/'nn_model.png')
 
         # Create output dir
@@ -379,6 +392,27 @@ class LearningCurve():
         model.fit(xtr_sub, ytr_sub, **fit_kwargs)
         joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
         return model, trn_outdir
+    
+    
+    def trn_rf_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
+        """ Train and save RF model. """
+        # Create output dir
+        trn_outdir = self.outdir / ('cv'+str(fold+1) + '_sz'+str(tr_sz))
+        # os.makedirs(trn_outdir, exist_ok=False)
+        os.makedirs(trn_outdir, exist_ok=True)
+
+        # Get a subset of samples for validation for early stopping
+        fit_kwargs = self.fit_kwargs
+        # xtr_sub, xvl_sub, ytr_sub, yvl_sub = train_test_split(xtr_sub, ytr_sub, test_size=self.val_split)
+        # if xvl_sub_.shape[0] > 0:
+        #     fit_kwargs['eval_set'] = (xvl_sub, yvl_sub)
+        #     fit_kwargs['early_stopping_rounds'] = 10
+
+        # Train and save model
+        model.fit(xtr_sub, ytr_sub, **fit_kwargs)
+        joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
+        return model, trn_outdir    
+# --------------------------------------------------------------------------------
 
     
 

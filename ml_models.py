@@ -25,6 +25,8 @@ from keras.models import Sequential, Model, model_from_json, model_from_yaml
 from keras.utils import np_utils, multi_gpu_model
 from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
 
+import lightgbm as lgb
+
 
 def clr_keras_callback(mode=None, base_lr=1e-4, max_lr=1e-3, gamma=0.999994):
     """ Creates keras callback for cyclical learning rate. """
@@ -54,7 +56,11 @@ def get_model(model_name, init_kwargs=None):
         init_kwargs : init parameters to the model
         model_name : model name
     """
-    if model_name == 'nn_reg0':
+    if model_name == 'lgb_reg':
+        model = LGBM_REGRESSOR(**init_kwargs)
+    elif model_name == 'rf_reg':
+        model = RF_REGRESSOR(**init_kwargs)    
+    elif model_name == 'nn_reg0':
         model = NN_REG0(**init_kwargs)
     else:
         raise ValueError('model_name is invalid.')
@@ -265,3 +271,90 @@ class NN_REG0(BaseMLModel):
         self.model = model
         
         
+        
+class LGBM_REGRESSOR(BaseMLModel):
+    """ LightGBM regressor. """
+    ml_objective = 'regression'
+    model_name = 'lgb_reg'
+
+    def __init__(self, n_estimators=100, eval_metric=['l2', 'l1'], n_jobs=1, random_state=None, logger=None):
+        # TODO: use config file to set default parameters (like in candle)
+        
+        self.model = lgb.LGBMModel(
+            objective = LGBM_REGRESSOR.ml_objective,
+            n_estimators = n_estimators,
+            n_jobs = n_jobs,
+            random_state = random_state)
+
+
+    # def fit(self, X, y, eval_set=None, **fit_params):
+    #     #self.eval_set = eval_set
+    #     #self.X = X
+    #     #self.y = y
+    #     #self.x_size = X.shape  # this is used to calc adjusteed r^2
+        
+    #     t0 = time.time()
+    #     self.model.fit(X, y,
+    #                    eval_metric=self.eval_metric,
+    #                    eval_set=eval_set,
+    #                    **fit_params)
+    #     self.train_runtime = time.time() - t0
+
+    #     if self.logger is not None:
+    #         self.logger.info('Train time: {:.2f} mins'.format(self.train_runtime/60))
+
+
+    def dump_model(self, outdir='.'):
+        # lgb_reg.save_model(os.path.join(run_outdir, 'lgb_'+ml_type+'_model.txt'))
+        joblib.dump(self.model, filename=Path(outdir)/('model.' + LGBM_REGRESSOR.model_name + '.pkl'))
+        # lgb_reg_ = joblib.load(filename=os.path.join(run_outdir, 'lgb_reg_model.pkl'))
+
+        
+    def plot_fi(self, max_num_features=20, title='LGBMRegressor', outdir=None):
+        lgb.plot_importance(booster=self.model, max_num_features=max_num_features, grid=True, title=title)
+        plt.tight_layout()
+
+        filename = LGBM_REGRESSOR.model_name + '_fi.png'
+        if outdir is None:
+            plt.savefig(filename, bbox_inches='tight')
+        else:
+            plt.savefig(Path(outdir)/filename, bbox_inches='tight')
+
+
+    # # Plot training curves
+    # # TODO: note, plot_metric didn't accept 'mae' although it's alias for 'l1' 
+    # # TODO: plot_metric requires dict from train(), but train returns 'lightgbm.basic.Booster'??
+    # for m in eval_metric:
+    #     ax = lgb.plot_metric(booster=lgb_reg, metric=m, grid=True)
+    #     plt.savefig(os.path.join(run_outdir, model_name+'_learning_curve_'+m+'.png'))
+    
+
+    
+class RF_REGRESSOR(BaseMLModel):
+    """ Random forest regressor. """
+    # Define class attributes (www.toptal.com/python/python-class-attributes-an-overly-thorough-guide)
+    model_name = 'rf_reg'
+
+    def __init__(self, n_estimators=100, criterion='mse',
+                 max_depth=None, min_samples_split=2,
+                 max_features='sqrt',
+                 bootstrap=True, oob_score=True, verbose=0, 
+                 n_jobs=1, random_state=None,
+                 logger=None):               
+
+        self.model = RandomForestRegressor(
+            n_estimators=n_estimators,
+            criterion=criterion,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            max_features=max_features, bootstrap=bootstrap, oob_score=oob_score,
+            verbose=verbose, random_state=random_state, n_jobs=n_jobs)
+
+
+    def plot_fi(self):
+        pass # TODO
+
+
+    def dump_model(self, outdir='.'):
+        joblib.dump(self.model, filename=os.path.join(outdir, 'model.' + RF_REGRESSOR.model_name + '.pkl'))
+        # model_ = joblib.load(filename=os.path.join(run_outdir, 'lgb_reg_model.pkl'))        

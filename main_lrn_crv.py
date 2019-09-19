@@ -1,5 +1,5 @@
 """ 
-This script generates multiple learning curves for different training sets.
+This script generates learning curves.
 It launches a script (e.g. trn_lrn_crv.py) that train ML model(s) on various training set sizes.
 """
 from __future__ import print_function, division
@@ -35,10 +35,6 @@ filepath = Path(__file__).resolve().parent
 
 
 # Utils
-# utils_path = filepath / '../../utils'
-# sys.path.append(str(utils_path))
-# import utils
-# from utils_tidy import load_tidy_combined, get_data_by_src, break_src_data 
 from classlogger import Logger
 from lrn_crv import LearningCurve
     
@@ -47,7 +43,7 @@ def parse_args(args):
     parser = argparse.ArgumentParser(description="Generate learning curves.")
 
     # Input data
-    parser.add_argument('--dirpath', default=None, type=str, help='Full path to data and splits (default: None).')
+    parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to data and splits (default: None).')
 
     # Select data name
     # parser.add_argument('--dname', default=None, choices=['combined'], help='Data name (default: `combined`).')
@@ -74,8 +70,7 @@ def parse_args(args):
     
     # ML models
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
-    parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str, choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg1', 'nn_reg2'],
-            help='ML model for training (default: lgb_reg).')
+    parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str, choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg1', 'nn_reg2'], help='ML model (default: lgb_reg).')
 
     # NN hyper_params
     parser.add_argument('-ep', '--epochs', default=200, type=int, help='Number of epochs (default: 200).')
@@ -115,7 +110,14 @@ def create_outdir(outdir, args, src):
     #outdir = Path(outdir) / name_sffx
     os.makedirs(outdir)
     #os.makedirs(outdir, exist_ok=True)
-    return outdir    
+    return outdir
+
+
+def dump_dict(dct, outpath='./dict.txt'):
+    """ Dump dict into file. """
+    with open( Path(outpath), 'w' ) as file:
+        for k in sorted(dct.keys()):
+            file.write('{}: {}\n'.format(k, dct[k]))
     
     
 def run(args):
@@ -229,6 +231,10 @@ def run(args):
         framework = 'lightgbm'
         init_kwargs = {'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
         fit_kwargs = {'verbose': False}
+    elif model_name == 'rf_reg':
+        framework = 'sklearn'
+        init_kwargs = {'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
+        fit_kwargs = {}
     elif model_name == 'nn_reg':
         framework = 'keras'
         init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': dr_rate, 'opt_name': opt_name, 'attn': attn, 'logger': lg.logger}
@@ -252,8 +258,8 @@ def run(args):
 
     t0 = time()
     lc = LearningCurve( X=xdata, Y=ydata, cv=None, cv_lists=(tr_id, vl_id),
-        n_shards=n_shards, shard_step_scale='log10', args=args,
-        logger=lg.logger, outdir=run_outdir )
+        n_shards=n_shards, # shard_step_scale='log10',
+        args=args, logger=lg.logger, outdir=run_outdir )
 
     lrn_crv_scores = lc.trn_learning_curve( framework=framework, mltype=mltype, model_name=model_name,
         init_kwargs=init_kwargs, fit_kwargs=fit_kwargs, clr_keras_kwargs=clr_keras_kwargs,

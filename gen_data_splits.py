@@ -44,7 +44,7 @@ def parse_args(args):
     parser = argparse.ArgumentParser(description='Generate and save dataset splits.')
 
     # Input data
-    parser.add_argument('--dirpath', default=None, type=str, help='Full path to data (default: None).')
+    parser.add_argument('--dirpath', default=None, type=str, help='Full path to dir that contains the data file (default: None).')
 
     # Params related to combined dataset
     # parser.add_argument('--rna_norm', default='raw', choices=['raw', 'combat'], help='RNA normalization (default: raw).')
@@ -151,7 +151,7 @@ def run(args):
     # -----------------------------------------------
     lg.logger.info('\nLoad data.')
     files = list(dirpath.glob('**/*.parquet'))
-    if len(files) > 0: data = pd.read_parquet( files[0], engine='auto', columns=None )
+    if len(files) > 0: data = pd.read_parquet( files[0], engine='auto', columns=None ) # TODO: assumes that there is only one data file
     lg.logger.info('data.shape {}'.format(data.shape))
 
     # Split features and traget, and dump to file
