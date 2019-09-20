@@ -70,7 +70,8 @@ def parse_args(args):
     
     # ML models
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
-    parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str, choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg1', 'nn_reg2'], help='ML model (default: lgb_reg).')
+    parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str,
+                        choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg_l_less', 'nn_reg_l_more', 'nn_reg_n_less', 'nn_reg_n_more'], help='ML model (default: lgb_reg).')
 
     # NN hyper_params
     parser.add_argument('-ep', '--epochs', default=200, type=int, help='Number of epochs (default: 200).')
@@ -87,6 +88,8 @@ def parse_args(args):
 
     # Learning curve
     parser.add_argument('--n_shards', default=5, type=int, help='Number of ticks in the learning curve plot (default: 5).')
+    parser.add_argument('--min_shard', default=128, type=int, help='Smallest data size shard (default: 128).')
+    parser.add_argument('--max_shard', default=None, type=int, help='Laregt data size shard (default: None).')
 
     # Define n_jobs
     parser.add_argument('--n_jobs', default=4, type=int, help='Default: 4.')
@@ -145,6 +148,8 @@ def run(args):
 
     # Learning curve
     n_shards = args['n_shards']
+    min_shard = args['min_shard']
+    max_shard = args['max_shard']
 
     # Other params
     # framework = args['framework']
@@ -235,17 +240,9 @@ def run(args):
         framework = 'sklearn'
         init_kwargs = {'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
         fit_kwargs = {}
-    elif model_name == 'nn_reg':
-        framework = 'keras'
-        init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': dr_rate, 'opt_name': opt_name, 'attn': attn, 'logger': lg.logger}
-        fit_kwargs = {'batch_size': batch_size, 'epochs': epochs, 'verbose': 1} 
-    elif model_name == 'nn_reg0' or 'nn_reg1' or 'nn_reg2':
+    elif model_name == 'nn_reg0' or 'nn_reg_l_less' or 'nn_reg_l_more' or 'nn_reg_n_less' or 'nn_reg_n_more':
         framework = 'keras'
         init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': dr_rate, 'opt_name': opt_name, 'logger': lg.logger}
-        fit_kwargs = {'batch_size': batch_size, 'epochs': epochs, 'verbose': 1}  # 'validation_split': 0.1
-    elif model_name == 'nn_reg3' or 'nn_reg4':
-        framework = 'keras'
-        init_kwargs = {'in_dim_rna': None, 'in_dim_dsc': None, 'dr_rate': dr_rate, 'opt_name': opt_name, 'logger': lg.logger}
         fit_kwargs = {'batch_size': batch_size, 'epochs': epochs, 'verbose': 1}  # 'validation_split': 0.1
 
 
@@ -258,7 +255,7 @@ def run(args):
 
     t0 = time()
     lc = LearningCurve( X=xdata, Y=ydata, cv=None, cv_lists=(tr_id, vl_id),
-        n_shards=n_shards, # shard_step_scale='log10',
+        n_shards=n_shards, min_shard=min_shard, max_shard=max_shard, # shard_step_scale='log10',
         args=args, logger=lg.logger, outdir=run_outdir )
 
     lrn_crv_scores = lc.trn_learning_curve( framework=framework, mltype=mltype, model_name=model_name,

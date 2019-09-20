@@ -10,7 +10,7 @@ There are three main scripts you need to run:
 Script (1) requires to have a folder called "data" that contains a set of required files.
 You can just copy the folder /vol/ml/apartin/projects/candle/data to your parent dir.
 
-### Step-by-step runs
+### Step-by-step execusion
 (1) First, run script (1) as follows:
 ```py
 python build_topN.py --top_n 6 --format parquet --labels

@@ -59,9 +59,21 @@ def get_model(model_name, init_kwargs=None):
     if model_name == 'lgb_reg':
         model = LGBM_REGRESSOR(**init_kwargs)
     elif model_name == 'rf_reg':
-        model = RF_REGRESSOR(**init_kwargs)    
+        model = RF_REGRESSOR(**init_kwargs)
+        
     elif model_name == 'nn_reg0':
         model = NN_REG0(**init_kwargs)
+        
+    elif model_name == 'nn_reg_l_less':
+        model = NN_REG_L_LESS(**init_kwargs)
+    elif model_name == 'nn_reg_l_more':
+        model = NN_REG_L_MORE(**init_kwargs)
+        
+    elif model_name == 'nn_reg_n_less':
+        model = NN_REG_N_LESS(**init_kwargs)
+    elif model_name == 'nn_reg_n_more':
+        model = NN_REG_N_MORE(**init_kwargs)
+                
     else:
         raise ValueError('model_name is invalid.')
     return model
@@ -269,6 +281,129 @@ class NN_REG0(BaseMLModel):
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model
+        
+
+
+class NN_REG_N_LESS(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN.
+    """
+    model_name = 'nn_reg_n_less'
+
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+
+        layers = [500, 250, 125, 60]
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        x = self.build_dense_block(layers, inputs)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        if self.opt_name == 'sgd':
+            opt = SGD(lr=1e-4, momentum=0.9)
+        elif self.opt_name == 'adam':
+            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+        else:
+            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model 
+        
+        
+        
+class NN_REG_N_MORE(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN.
+    """
+    model_name = 'nn_reg_n_more'
+
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+
+        layers = [1000, 500, 250, 125]
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        x = self.build_dense_block(layers, inputs)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        if self.opt_name == 'sgd':
+            opt = SGD(lr=1e-4, momentum=0.9)
+        elif self.opt_name == 'adam':
+            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+        else:
+            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model            
+    
+        
+        
+class NN_REG_L_LESS(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN.
+    """
+    model_name = 'nn_reg_l_less'
+
+    def __init__(self, input_dim, layers, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+
+        layers = [1000, 500]
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        x = self.build_dense_block(layers, inputs)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        if self.opt_name == 'sgd':
+            opt = SGD(lr=1e-4, momentum=0.9)
+        elif self.opt_name == 'adam':
+            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+        else:
+            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model 
+        
+        
+class NN_REG_L_MORE(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN.
+    """
+    model_name = 'nn_reg_l_more'
+
+    def __init__(self, input_dim, layers, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+
+        layers = [1000, 500, 250, 125]
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        x = self.build_dense_block(layers, inputs)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        if self.opt_name == 'sgd':
+            opt = SGD(lr=1e-4, momentum=0.9)
+        elif self.opt_name == 'adam':
+            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+        else:
+            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model         
         
         
         

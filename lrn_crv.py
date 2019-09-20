@@ -7,6 +7,7 @@ TODO: move utils.calc_scores to a more local function.
 import os
 import sys
 from pathlib import Path
+from time import time
 from collections import OrderedDict
 
 import sklearn
@@ -56,6 +57,8 @@ class LearningCurve():
             n_shards: int=5,
             # shard_step_scale: str='log2',
             # shard_frac=[],
+            min_shard = 0,
+            max_shard = None,
             args=None,
             logger=None,
             outdir='./'):
@@ -83,6 +86,8 @@ class LearningCurve():
         self.n_shards = n_shards
         # self.shard_step_scale = shard_step_scale 
         # self.shard_frac = shard_frac
+        self.min_shard = min_shard
+        self.max_shard = max_shard
         self.args = args
         self.logger = logger
         self.outdir = Path(outdir)
@@ -170,27 +175,33 @@ class LearningCurve():
 
         # --------------------------------------------
         # Fixed spacing
-        if self.cv_folds == 1:
-            self.max_samples = int( (1-self.vl_size) * self.X.shape[0] )
-        else: 
-            self.max_samples = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
-            
-        # TODO need to add self.max_samples to the training vector
-        v = 2 ** np.array(np.arange(30))[1:]
-        idx = np.argmin( np.abs( v - self.max_samples ) )
-        
-        if v[idx] > self.max_samples:
-            v = list(v[:idx])    # all values excluding the last one
-            v.append(self.max_samples)
+        if self.max_shard is None:
+            if self.cv_folds == 1:
+                self.max_shard = int( (1-self.vl_size) * self.X.shape[0] )
+            else: 
+                self.max_shard = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
+                
+        # Full vector of shards
+        m = 2 ** np.array(np.arange(30))[1:]
+
+        # Set min shard
+        idx_min = np.argmin( np.abs( m - self.min_shard ) )
+        if m[idx_min] > self.min_shard: idx_min = idx_min - 1
+        m = m[idx_min:]
+
+        # Set max shard
+        idx_max = np.argmin( np.abs( m - self.max_shard ) )
+        if m[idx_max] > self.max_shard:
+            m = list(m[:idx_max])    # all values EXcluding the last one
+            m.append(self.max_shard)
         else:
-            # v = list(v[:idx])
-            v = list(v[:idx+1])  # all values including the last one
-            v.append(self.max_samples)
-            # If the diff btw max_samples and the latest shards (v[-1] - v[-2]) is "too small", then remove max_samples from the possible shards.
-            if 0.5*v[-3] > (v[-1] - v[-2]): v = v[:-1]
+            m = list(m[:idx_max+1])  # all values INcluding the last one
+            m.append(self.max_shard) # TODO: should this be also added??
+            # If the diff btw max_samples and the latest shards (m[-1] - m[-2]) is "too small", then remove max_samples from the possible shards.
+            if 0.5*m[-3] > (m[-1] - m[-2]): m = m[:-1]
         
-        # self.tr_shards = v[:-self.n_shards]
-        self.tr_shards = v
+        # self.tr_shards = m[:-self.n_shards]
+        self.tr_shards = m
         # --------------------------------------------
         
         if self.logger is not None: self.logger.info('Train shards: {}\n'.format(self.tr_shards))
@@ -229,6 +240,9 @@ class LearningCurve():
         # Start nested loop of train size and cv folds
         tr_scores_all = [] # list of dicts
         vl_scores_all = [] # list of dicts
+
+        # Record runtime per shard
+        runtime_records = []
 
         # CV loop
         for fold, (tr_k, vl_k) in enumerate(zip( self.tr_dct.keys(), self.vl_dct.keys() )):
@@ -275,15 +289,15 @@ class LearningCurve():
                 eval_samples = int(self.eval_frac * xvl.shape[0])
                 eval_set = (xvl[:eval_samples, :], yvl[:eval_samples]) # we don't random sample; the same eval_set is used for early stopping
                 if self.framework=='lightgbm':
-                    model, trn_outdir = self.trn_lgbm_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
+                    model, trn_outdir, t = self.trn_lgbm_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
                 elif self.framework=='sklearn':
-                    model, trn_outdir = self.trn_rf_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=None)
+                    model, trn_outdir, t= self.trn_sklearn_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=None)
                 elif self.framework=='keras':
-                    model, trn_outdir = self.trn_keras_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
+                    model, trn_outdir, t = self.trn_keras_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
                 elif self.framework=='pytorch':
                     pass
                 else:
-                    raise ValueError(f'framework {self.framework} is not supported.')
+                    raise ValueError(f'Framework {self.framework} is not supported.')
 
                 # Calc preds and scores TODO: dump preds
                 # ... training set
@@ -296,6 +310,9 @@ class LearningCurve():
                 del estimator, model
                 # nm = ((y_true - y_pred) ** 2).sum(axis=0, dtype=np.float64)
                 # dn = ((y_true - np.average(y_true, axis=0)) ** 2).sum(axis=0, dtype=np.float64)
+
+                # Store runtime
+                runtime_records.append((fold, tr_sz, t))
 
                 # Add metadata
                 tr_scores['tr_set'] = True
@@ -313,7 +330,7 @@ class LearningCurve():
                 # Dump intermediate scores
                 # TODO: test this!
                 # scores_tmp = pd.concat([scores_to_df(tr_scores_all), scores_to_df(vl_scores_all)], axis=0)
-                scores_tmp = pd.concat([scores_to_df(tr_scores), scores_to_df(vl_scores)], axis=0)
+                scores_tmp = pd.concat([scores_to_df([tr_scores]), scores_to_df([vl_scores])], axis=0)
                 scores_tmp.to_csv( trn_outdir / ('scores_tmp.csv'), index=False )
                 del trn_outdir, scores_tmp
                 
@@ -332,10 +349,15 @@ class LearningCurve():
         tr_scores_df.to_csv( self.outdir/'tr_lrn_crv_scores.csv', index=False) 
         vl_scores_df.to_csv( self.outdir/'vl_lrn_crv_scores.csv', index=False) 
         scores_df.to_csv( self.outdir/'lrn_crv_scores.csv', index=False) 
+
+        # Runtime df
+        runtime_df = pd.DataFrame.from_records(runtime_records, columns=['fold', 'tr_sz', 'time'])
+        runtime_df.to_csv( self.outdir/'runtime.csv', index=False) 
         
         # Plot learning curves
         if plot:
             plot_lrn_crv_all_metrics( scores_df, outdir=self.outdir )
+            plot_runtime( runtime_df, outdir=self.outdir )
 
         return scores_df
 
@@ -362,14 +384,16 @@ class LearningCurve():
         fit_kwargs['callbacks'] = keras_callbacks
 
         # Train model
+        t0 = time()
         history = model.fit(xtr_sub, ytr_sub, **fit_kwargs)
+        runtime = (time() - t0)/60
         ml_models.save_krs_history(history, outdir=trn_outdir)
         ml_models.plot_prfrm_metrics(history, title=f'Train size: {tr_sz}', skp_ep=20, add_lr=True, outdir=trn_outdir)
 
         # Load the best model (https://github.com/keras-team/keras/issues/5916)
         # model = keras.models.load_model(str(trn_outdir/'model_best.h5'), custom_objects={'r2_krs': ml_models.r2_krs})
         model = keras.models.load_model( str(trn_outdir/'model_best.h5') )
-        return model, trn_outdir
+        return model, trn_outdir, runtime
 
 
     def trn_lgbm_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
@@ -389,13 +413,15 @@ class LearningCurve():
         fit_kwargs['early_stopping_rounds'] = 10
 
         # Train and save model
+        t0 = time()
         model.fit(xtr_sub, ytr_sub, **fit_kwargs)
+        runtime = (time() - t0)/60
         joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
-        return model, trn_outdir
+        return model, trn_outdir, runtime
     
     
-    def trn_rf_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
-        """ Train and save RF model. """
+    def trn_sklearn_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
+        """ Train and save sklearn model. """
         # Create output dir
         trn_outdir = self.outdir / ('cv'+str(fold+1) + '_sz'+str(tr_sz))
         # os.makedirs(trn_outdir, exist_ok=False)
@@ -409,9 +435,11 @@ class LearningCurve():
         #     fit_kwargs['early_stopping_rounds'] = 10
 
         # Train and save model
+        t0 = time()
         model.fit(xtr_sub, ytr_sub, **fit_kwargs)
+        runtime = (time() - t0)/60
         joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
-        return model, trn_outdir    
+        return model, trn_outdir, runtime
 # --------------------------------------------------------------------------------
 
     
@@ -519,8 +547,7 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
         ax.fill_between(tr_shards, scores_mean - scores_std, scores_mean + scores_std, alpha=0.1, color=color)
 
     # Plot learning curves
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+    if ax is None: fig, ax = plt.subplots(figsize=figsize)
         
     if tr_scores is not None:
         plot_single_crv(tr_shards, scores=tr_scores, ax=ax, color='b', phase='Train')
@@ -639,6 +666,22 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     return fig, ax, power_law_params
 
 
+def plot_runtime(rt:pd.DataFrame, outdir:Path=None, figsize=(7,5)):
+    """ Plot training time vs shard size. """
+    fontsize = 13
+    fig, ax = plt.subplots(figsize=figsize)
+    for f in rt['fold'].unique():
+        d = rt[rt['fold']==f]
+        ax.plot(d['tr_sz'], d['time'], 'o--', label='fold'+str(f))
+        
+    ax.set_title('Runtime')
+    ax.set_xlabel(f'Training Size', fontsize=fontsize)
+    ax.set_ylabel(f'Training Time (minutes)', fontsize=fontsize)
+    ax.legend(loc='best', frameon=True, fontsize=fontsize)
+    ax.grid(True)
+
+    # Save fig
+    if outdir is not None: plt.savefig(outdir/'runtime.png', bbox_inches='tight')
 
 
 # Define custom metric to calc auroc from regression
