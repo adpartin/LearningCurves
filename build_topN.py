@@ -156,13 +156,24 @@ def build_dataframe(args):
     # df_response = df_response[df_response.CELL.isin(cl_filter) & df_response.DRUG.isin(dr_filter)][['CELL', 'DRUG', target]].drop_duplicates().reset_index(drop=True) # (ap) commented
     df_response = df_response[df_response.CELL.isin(cl_filter) & df_response.DRUG.isin(dr_filter)].drop_duplicates().reset_index(drop=True) # (ap) keep all targets
 
-    # (ap) Drop bad points (as identified by Yitan)
+    # (ap) Drop bad points (these identified by Yitan)
     # TODO: confirm this with Yitan!
+    """
     lg.logger.info('\nDrop bad samples ...')
     id_drop = (df_response['AUC'] == 0) & (df_response['EC50se'] == 0) & (df_response['R2fit'] == 0)
     df_response = df_response.loc[~id_drop,:]
     lg.logger.info(f'Dropped {sum(id_drop)} rsp data points.')
-    lg.logger.info(f'df_response.shape {df_response.shape}')    
+    lg.logger.info(f'df_response.shape {df_response.shape}')
+    """
+    
+    # (ap) Drop points with bad fit
+    # TODO: check this (may require a more rigorous analysis)
+    lg.logger.info('\nDrop samples with bad fit (R2fit) ...')
+    lg.logger.info(f'df_response.shape {df_response.shape}')
+    id_drop = df_response['R2fit'] <= 0
+    df_response = df_response.loc[~id_drop,:]
+    lg.logger.info(f'Dropped {sum(id_drop)} rsp data points.')
+    lg.logger.info(f'df_response.shape {df_response.shape}')
     
     if args.response_type == 'bin':
         df_response[target] = df_response[target].apply(lambda x: 0 if x < 0.5 else 1)
@@ -222,10 +233,10 @@ def build_dataframe(args):
     else:
         df_final.drop(columns=['CELL', 'DRUG'], inplace=True)
         df_final.drop_duplicates(inplace=True)
-    lg.logger.info("Dataframe is built with total {} rows.".format(len(df_final)))
+    lg.logger.info("\nDataframe is built with total {} rows.".format(len(df_final)))
 
     # (ap) Shuffle
-    lg.logger.info("\nShuffle final df.")
+    lg.logger.info("Shuffle final df.")
     df_final = df_final.sample(frac=1.0, random_state=SEED).reset_index(drop=True)
     
     save_filename = build_filename(args)

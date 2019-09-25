@@ -289,11 +289,11 @@ class LearningCurve():
                 eval_samples = int(self.eval_frac * xvl.shape[0])
                 eval_set = (xvl[:eval_samples, :], yvl[:eval_samples]) # we don't random sample; the same eval_set is used for early stopping
                 if self.framework=='lightgbm':
-                    model, trn_outdir, t = self.trn_lgbm_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
+                    model, trn_outdir, runtime = self.trn_lgbm_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
                 elif self.framework=='sklearn':
-                    model, trn_outdir, t= self.trn_sklearn_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=None)
+                    model, trn_outdir, runtime = self.trn_sklearn_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=None)
                 elif self.framework=='keras':
-                    model, trn_outdir, t = self.trn_keras_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
+                    model, trn_outdir, runtime = self.trn_keras_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
                 elif self.framework=='pytorch':
                     pass
                 else:
@@ -312,7 +312,7 @@ class LearningCurve():
                 # dn = ((y_true - np.average(y_true, axis=0)) ** 2).sum(axis=0, dtype=np.float64)
 
                 # Store runtime
-                runtime_records.append((fold, tr_sz, t))
+                runtime_records.append((fold, tr_sz, runtime))
 
                 # Add metadata
                 tr_scores['tr_set'] = True

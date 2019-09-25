@@ -1,1 +1,5 @@
 Each data shard needs to run through HPO. Thus, the data indexes for each shards need to be saved and not generated during the execusion of learning curves.
+
+For the previous code of learning curves, I got good results for top6_cv_simple, AUC1, rna, dsc, cv_folds=5.
+I used the entire set of features (I don't know how Rick have imputed the missing values).
+In that run NN and attention NN outperformed LGBM.

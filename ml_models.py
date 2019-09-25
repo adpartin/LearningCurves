@@ -71,14 +71,14 @@ def get_model(model_name, init_kwargs=None):
     elif model_name == 'nn_reg1':
         model = NN_REG1(**init_kwargs)        
         
-    elif model_name == 'nn_reg_l_less':
+    elif model_name == 'nn_reg_layer_less':
         model = NN_REG_L_LESS(**init_kwargs)
-    elif model_name == 'nn_reg_l_more':
+    elif model_name == 'nn_reg_layer_more':
         model = NN_REG_L_MORE(**init_kwargs)
         
-    elif model_name == 'nn_reg_n_less':
+    elif model_name == 'nn_reg_neuron_less':
         model = NN_REG_N_LESS(**init_kwargs)
-    elif model_name == 'nn_reg_n_more':
+    elif model_name == 'nn_reg_neuron_more':
         model = NN_REG_N_MORE(**init_kwargs)
                 
     else:
@@ -274,7 +274,8 @@ class BaseMLModel():
         return x
 
     
-
+    
+# ---------------------------------------------------------
 class NN_REG0(BaseMLModel):
     """ Neural network regressor.
     Fully-connected NN.
@@ -335,14 +336,48 @@ class NN_REG1(BaseMLModel):
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model        
-        
-        
+# ---------------------------------------------------------
 
-class NN_REG_N_LESS(BaseMLModel):
+        
+        
+class NN_REG_ATTN(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN with attention.
+    TODO: implement attention layer!
+    """
+    model_name = 'nn_reg_attn'
+
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+
+        layers = [1000, 1000, 500, 250, 125, 60, 30]
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        x = self.build_dense_block(layers, inputs)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        if self.opt_name == 'sgd':
+            opt = SGD(lr=1e-4, momentum=0.9)
+        elif self.opt_name == 'adam':
+            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+        else:
+            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model        
+        
+        
+        
+# ---------------------------------------------------------
+class NN_REG_NEURON_LESS(BaseMLModel):
     """ Neural network regressor.
     Fully-connected NN.
     """
-    model_name = 'nn_reg_n_less'
+    model_name = 'nn_reg_neuron_less'
 
     def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
         self.input_dim = input_dim
@@ -368,12 +403,12 @@ class NN_REG_N_LESS(BaseMLModel):
         self.model = model 
         
         
-        
-class NN_REG_N_MORE(BaseMLModel):
+
+class NN_REG_NEURON_MORE(BaseMLModel):
     """ Neural network regressor.
     Fully-connected NN.
     """
-    model_name = 'nn_reg_n_more'
+    model_name = 'nn_reg_neuron_more'
 
     def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
         self.input_dim = input_dim
@@ -397,14 +432,16 @@ class NN_REG_N_MORE(BaseMLModel):
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model            
-    
+# ---------------------------------------------------------
+
         
-        
-class NN_REG_L_LESS(BaseMLModel):
+
+# ---------------------------------------------------------    
+class NN_REG_LAYER_LESS(BaseMLModel):
     """ Neural network regressor.
-    Fully-connected NN.
+    Fully-connected NN with less layers.
     """
-    model_name = 'nn_reg_l_less'
+    model_name = 'nn_reg_layer_less'
 
     def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
         self.input_dim = input_dim
@@ -430,11 +467,11 @@ class NN_REG_L_LESS(BaseMLModel):
         self.model = model 
         
         
-class NN_REG_L_MORE(BaseMLModel):
+class NN_REG_LAYER_MORE(BaseMLModel):
     """ Neural network regressor.
-    Fully-connected NN.
+    Fully-connected NN more layers.
     """
-    model_name = 'nn_reg_l_more'
+    model_name = 'nn_reg_layer_more'
 
     def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
         self.input_dim = input_dim
@@ -458,7 +495,8 @@ class NN_REG_L_MORE(BaseMLModel):
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model         
-        
+# ---------------------------------------------------------
+
         
         
 class LGBM_REGRESSOR(BaseMLModel):

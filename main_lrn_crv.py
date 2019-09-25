@@ -71,8 +71,8 @@ def parse_args(args):
     # ML models
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
     parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str,
-                        choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_l_less', 'nn_reg_l_more',
-                                 'nn_reg_n_less', 'nn_reg_n_more'], help='ML model (default: lgb_reg).')
+                        choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_layer_less', 'nn_reg_layer_more',
+                                 'nn_reg_neuron_less', 'nn_reg_neuron_more'], help='ML model (default: lgb_reg).')
 
     # LightGBM params
     parser.add_argument('--n_trees', default=100, type=int, help='Number of trees (default: 100).')
@@ -251,7 +251,7 @@ def run(args):
         framework = 'sklearn'
         init_kwargs = {'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
         fit_kwargs = {}
-    elif model_name == 'nn_reg0' or 'nn_reg1' or 'nn_reg_l_less' or 'nn_reg_l_more' or 'nn_reg_n_less' or 'nn_reg_n_more':
+    elif model_name == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':
         framework = 'keras'
         init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': dr_rate, 'opt_name': opt_name, 'logger': lg.logger}
         fit_kwargs = {'batch_size': batch_size, 'epochs': epochs, 'verbose': 1}  # 'validation_split': 0.1

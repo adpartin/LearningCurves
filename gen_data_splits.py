@@ -46,15 +46,9 @@ def parse_args(args):
     # Input data
     parser.add_argument('--dirpath', default=None, type=str, help='Full path to dir that contains the data file (default: None).')
 
-    # Params related to combined dataset
-    # parser.add_argument('--rna_norm', default='raw', choices=['raw', 'combat'], help='RNA normalization (default: raw).')
-    # parser.add_argument('--no_fibro', action='store_true', default=False, help='Default: False')
-    # parser.add_argument('--src', nargs='+', default=None, choices=['ccle', 'gcsi', 'gdsc', 'ctrp', 'nci60'], help='Data sources to use (default: None).')
-
     # Feature types
-    # parser.add_argument('-cf', '--cell_fea', nargs='+', default=['rna'], choices=['rna', 'cnv', 'clb'], help='Cell line features (default: rna).')
-    # parser.add_argument('-df', '--drug_fea', nargs='+', default=['dsc'], choices=['dsc', 'fng', 'dlb'], help='Drug features (default: dsc).')
-    # parser.add_argument('-of', '--other_fea', default=[], choices=[], help='Other feature types (derived from cell lines and drugs). E.g.: cancer type, etc).') # ['cell_lbl', 'drg_lbl', 'ctype', 'csite']
+    parser.add_argument('-cf', '--cell_fea', nargs='+', default=['GE'], choices=['GE'], help='Cell features (default: GE).')
+    parser.add_argument('-df', '--drug_fea', nargs='+', default=['DD'], choices=['DD'], help='Drug features (default: DD).')    
 
     # Data split methods
     parser.add_argument('--te_method', default='simple', choices=['simple', 'group'], help='Test split method (default: None).')
@@ -105,6 +99,27 @@ def plot_hist(x, var_name, fit=None, bins=100, path='hist.png'):
     plt.legend()
     plt.title(var_name + ' hist')
     plt.savefig(path, bbox_inches='tight')
+
+    
+def cnt_fea(df, fea_sep='_', verbose=True, logger=None):
+    """ Count the number of features per feature type. """
+    dct = {}
+    unq_prfx = df.columns.map(lambda x: x.split(fea_sep)[0]).unique() # unique feature prefixes
+    for prfx in unq_prfx:
+        fea_type_cols = [c for c in df.columns if (c.split(fea_sep)[0]) in prfx] # all fea names of specific type
+        dct[prfx] = len(fea_type_cols)
+    
+    if verbose and logger is not None:
+        logger.info(pformat(dct))
+    elif verbose:
+        pprint(dct)
+    return dct
+
+
+def extract_subset_fea(df, fea_list, fea_sep='_'):
+    """ Extract features based feature prefix name. """
+    fea = [c for c in df.columns if (c.split(fea_sep)[0]) in fea_list]
+    return df[fea]    
     
             
 def run(args):
@@ -117,9 +132,9 @@ def run(args):
     vl_size = split_size(args['vl_size'])
 
     # Features 
-    # cell_fea = args['cell_fea']
-    # drug_fea = args['drug_fea']
-    # fea_list = cell_fea + drug_fea
+    cell_fea = args['cell_fea']
+    drug_fea = args['drug_fea']
+    fea_list = cell_fea + drug_fea
     
     # Other params
     n_jobs = args['n_jobs']
@@ -128,7 +143,7 @@ def run(args):
     grp_by_col = None
     # cv_method = 'simple'
 
-    # TODO: this need to be improved
+    # TODO: this needs to be improved
     mltype = 'reg'  # required for the splits (stratify in case of classification)
     
     
@@ -149,22 +164,25 @@ def run(args):
     # -----------------------------------------------
     #       Load and break data
     # -----------------------------------------------
-    lg.logger.info('\nLoad data.')
+    lg.logger.info('\nLoad master dataset.')
     files = list(dirpath.glob('**/*.parquet'))
     if len(files) > 0: data = pd.read_parquet( files[0], engine='auto', columns=None ) # TODO: assumes that there is only one data file
     lg.logger.info('data.shape {}'.format(data.shape))
 
     # Split features and traget, and dump to file
     lg.logger.info('\nSplit features and target.')
-    meta = data[['AUC', 'CELL', 'DRUG']]
-    xdata = data.drop(columns=['AUC', 'CELL', 'DRUG'])
+    # meta = data[['AUC', 'CELL', 'DRUG']]
+    # xdata = data.drop(columns=['AUC', 'CELL', 'DRUG'])
+    xdata = extract_subset_fea(data, fea_list=fea_list, fea_sep='_')
+    meta = data.drop(columns=xdata.columns)
     xdata.to_parquet( outdir/'xdata.parquet' )
     meta.to_parquet( outdir/'meta.parquet' )
     
-    lg.logger.info('Totoal DD: {}'.format( len([c for c in xdata.columns if 'DD' in c]) ))
-    lg.logger.info('Totoal GE: {}'.format( len([c for c in xdata.columns if 'GE' in c]) ))
+    lg.logger.info('Total DD: {}'.format( len([c for c in xdata.columns if 'DD_' in c]) ))
+    lg.logger.info('Total GE: {}'.format( len([c for c in xdata.columns if 'GE_' in c]) ))
     lg.logger.info('Unique cells: {}'.format( meta['CELL'].nunique() ))
     lg.logger.info('Unique drugs: {}'.format( meta['DRUG'].nunique() ))
+    # cnt_fea(df, fea_sep='_', verbose=True, logger=lg.logger)
 
     plot_hist(meta['AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_all.png')
     
@@ -188,8 +206,8 @@ def run(args):
         tr_id = idx_vec[tr_id] # adjust the indices!
         te_id = idx_vec[te_id] # adjust the indices!
 
-        pd.Series(tr_id).to_csv(outdir/f'tr_id.csv', index=False, header=[0])
-        pd.Series(te_id).to_csv(outdir/f'te_id.csv', index=False, header=[0])
+        pd.Series(tr_id).to_csv( outdir/f'tr_id.csv', index=False, header=[0] )
+        pd.Series(te_id).to_csv( outdir/f'te_id.csv', index=False, header=[0] )
         
         lg.logger.info('Train: {:.1f}'.format( len(tr_id)/xdata.shape[0] ))
         lg.logger.info('Test:  {:.1f}'.format( len(te_id)/xdata.shape[0] ))
@@ -260,10 +278,10 @@ def run(args):
         vl_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in vl_folds.items() ]))
 
         # Dump
-        tr_folds.to_csv(outdir/f'{cv_folds}fold_tr_id.csv', index=False)
-        vl_folds.to_csv(outdir/f'{cv_folds}fold_vl_id.csv', index=False)
+        tr_folds.to_csv( outdir/f'{cv_folds}fold_tr_id.csv', index=False )
+        vl_folds.to_csv( outdir/f'{cv_folds}fold_vl_id.csv', index=False )
         
-        # Plot target dist only for the 1-fold
+        # Plot target dist only for the 1-fold case
         if cv_folds==1 and fold==0:
             plot_hist(meta.loc[tr_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_train.png')
             plot_hist(meta.loc[vl_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_val.png')
