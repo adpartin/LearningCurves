@@ -12,6 +12,11 @@ import sklearn
 import numpy as np
 import pandas as pd
 
+import matplotlib
+# matplotlib.use('TkAgg')
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.externals import joblib
 
@@ -63,6 +68,8 @@ def get_model(model_name, init_kwargs=None):
         
     elif model_name == 'nn_reg0':
         model = NN_REG0(**init_kwargs)
+    elif model_name == 'nn_reg1':
+        model = NN_REG1(**init_kwargs)        
         
     elif model_name == 'nn_reg_l_less':
         model = NN_REG_L_LESS(**init_kwargs)
@@ -91,20 +98,37 @@ def capitalize_metric(met):
     return ' '.join(s.capitalize() for s in met.split('_'))
 
 
-def plot_prfrm_metrics(history, title=None, skp_ep=0, outdir='.', add_lr=False):
-    """ Plots keras training curves history.
+# def plot_prfrm_metrics(history, title=None, skp_ep=0, outdir='.', add_lr=False):
+def plot_prfrm_metrics(history=None, logfile_path=None, title=None, name=None, skp_ep=0, outdir='.', add_lr=False):    
+    """ Plots training curves from keras history or keras traininig.log file.
     Args:
-        skp_ep: number of epochs to skip when plotting metrics 
-        add_lr: add curve of learning rate progression over epochs
+        history : history variable of keras
+        path_to_logs : full path to the training log file of keras
+        skp_ep : number of epochs to skip when plotting metrics 
+        add_lr : add curve of learning rate progression over epochs
+        
+    Retruns:
+        history : keras history
     """
-    all_metrics = list(history.history.keys())
+    if history is not None:
+        # Plot from keras history
+        hh = history.history
+        epochs = np.asarray(history.epoch) + 1
+        all_metrics = list(history.history.keys())
+        
+    elif logfile_path is not None:
+        # Plot from keras training.log file
+        hh = pd.read_csv(logfile_path, sep=',', header=0)
+        epochs = hh['epoch'] + 1
+        all_metrics = list(hh.columns)
+        
+    # Get training performance metrics
     pr_metrics = ['_'.join(m.split('_')[1:]) for m in all_metrics if 'val' in m]
 
-    epochs = np.asarray(history.epoch) + 1
     if len(epochs) <= skp_ep: skp_ep = 0
     eps = epochs[skp_ep:]
-    hh = history.history
         
+    # Interate over performance metrics and plot
     for p, m in enumerate(pr_metrics):
         metric_name = m
         metric_name_val = 'val_' + m
@@ -121,12 +145,9 @@ def plot_prfrm_metrics(history, title=None, skp_ep=0, outdir='.', add_lr=False):
         fig, ax1 = plt.subplots()
         
         # Plot metrics
-        # ax1.plot(eps, y_tr, color='b', marker='.', linestyle='-', linewidth=1, alpha=0.6, label=metric_name)
-        # ax1.plot(eps, y_vl, color='r', marker='.', linestyle='--', linewidth=1, alpha=0.6, label=metric_name_val)
         ax1.plot(eps, y_tr, color='b', marker='.', linestyle='-', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name))
         ax1.plot(eps, y_vl, color='r', marker='.', linestyle='--', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name_val))
         ax1.set_xlabel('Epoch')
-        # ylabel = ' '.join(s.capitalize() for s in metric_name.split('_'))
         ax1.set_ylabel(capitalize_metric(metric_name))
         ax1.set_xlim([min(eps)-1, max(eps)+1])
         ax1.set_ylim([ymin, ymax])
@@ -136,14 +157,15 @@ def plot_prfrm_metrics(history, title=None, skp_ep=0, outdir='.', add_lr=False):
         # ax1.tick_params(axis='both', which='minor', labelsize=12)        
         
         # Add learning rate
-        if (add_lr is True) and ('lr' in hh):            
-            ax2 = ax1.twinx()
-            ax2.plot(eps, hh['lr'][skp_ep:], color='g', marker='.', linestyle=':', linewidth=1,
-                     alpha=0.6, markersize=5, label='LR')
-            ax2.set_ylabel('Learning rate', color='g', fontsize=12)
-            
-            ax2.set_yscale('log') # 'linear'
-            ax2.tick_params('y', colors='g')
+        if logfile_path is None: # learning rate is not logged into log file (so it's only available from history)
+            if (add_lr is True) and ('lr' in hh):
+                ax2 = ax1.twinx()
+                ax2.plot(eps, hh['lr'][skp_ep:], color='g', marker='.', linestyle=':', linewidth=1,
+                         alpha=0.6, markersize=5, label='LR')
+                ax2.set_ylabel('Learning rate', color='g', fontsize=12)
+
+                ax2.set_yscale('log') # 'linear'
+                ax2.tick_params('y', colors='g')
         
         ax1.grid(True)
         # plt.legend([metric_name, metric_name_val], loc='best')
@@ -154,73 +176,73 @@ def plot_prfrm_metrics(history, title=None, skp_ep=0, outdir='.', add_lr=False):
         if title is not None: plt.title(title)
         
         # fig.tight_layout()
-        figpath = Path(outdir) / (metric_name+'.png')
-        plt.savefig(figpath, bbox_inches='tight')
-        plt.close()
-        
-
-def plot_metrics_from_logs(path_to_logs, title=None, name=None, skp_ep=0, outdir='.'):
-    """ Plots keras training from logs.
-    Args:
-        path_to_logs : full path to log file
-        skp_ep: number of epochs to skip when plotting metrics 
-    """
-    history = pd.read_csv(path_to_logs, sep=',', header=0)
-    
-    all_metrics = list(history.columns)
-    pr_metrics = ['_'.join(m.split('_')[1:]) for m in all_metrics if 'val' in m]
-
-    epochs = history['epoch'] + 1
-    if len(epochs) <= skp_ep: skp_ep = 0
-    eps = epochs[skp_ep:]
-    hh = history
-    
-    for p, m in enumerate(pr_metrics):
-        metric_name = m
-        metric_name_val = 'val_' + m
-
-        y_tr = hh[metric_name][skp_ep:]
-        y_vl = hh[metric_name_val][skp_ep:]
-        
-        ymin = min(set(y_tr).union(y_vl))
-        ymax = max(set(y_tr).union(y_vl))
-        lim = (ymax - ymin) * 0.1
-        ymin, ymax = ymin - lim, ymax + lim
-
-        # Start figure
-        fig, ax1 = plt.subplots()
-        
-        # Plot metrics
-        # ax1.plot(eps, y_tr, color='b', marker='.', linestyle='-', linewidth=1, alpha=0.6, label=metric_name)
-        # ax1.plot(eps, y_vl, color='r', marker='.', linestyle='--', linewidth=1, alpha=0.6, label=metric_name_val)
-        ax1.plot(eps, y_tr, color='b', marker='.', linestyle='-', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name))
-        ax1.plot(eps, y_vl, color='r', marker='.', linestyle='--', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name_val))        
-        ax1.set_xlabel('Epoch')
-        # ylabel = ' '.join(s.capitalize() for s in metric_name.split('_'))
-        ax1.set_ylabel(capitalize_metric(metric_name))
-        ax1.set_ylabel(ylabel)
-        ax1.set_xlim([min(eps)-1, max(eps)+1])
-        ax1.set_ylim([ymin, ymax])
-        ax1.tick_params('y', colors='k')
-        
-        ax1.grid(True)
-        # plt.legend([metric_name, metric_name_val], loc='best')
-        # medium.com/@samchaaa/how-to-plot-two-different-scales-on-one-plot-in-matplotlib-with-legend-46554ba5915a
-        legend = ax1.legend(loc='best', prop={'size': 10})
-        frame = legend.get_frame()
-        frame.set_facecolor('0.95')
-        if title is not None: plt.title(title)
-        
-        # fig.tight_layout()
-        if name is not None:
-            fname = name + '_' + metric_name + '.png'
-        else:
-            fname = metric_name + '.png'
+        fname = (metric_name + '.png') if name is None else (name + '_' + metric_name + '.png')
         figpath = Path(outdir) / fname
         plt.savefig(figpath, bbox_inches='tight')
         plt.close()
         
     return history
+
+
+# def plot_metrics_from_logs(path_to_logs, title=None, name=None, skp_ep=0, outdir='.'):
+#     """ Plots keras training from logs.
+#     TODO: is this really necessary?? can this be replaced by plot_prfrm_metrics()?
+#     Args:
+#         path_to_logs : full path to log file
+#         skp_ep: number of epochs to skip when plotting metrics 
+#     """
+# #     history = pd.read_csv(path_to_logs, sep=',', header=0)
+    
+# #     all_metrics = list(history.columns)
+# #     pr_metrics = ['_'.join(m.split('_')[1:]) for m in all_metrics if 'val' in m]
+
+#     epochs = history['epoch'] + 1
+#     if len(epochs) <= skp_ep: skp_ep = 0
+#     eps = epochs[skp_ep:]
+#     hh = history
+    
+#     for p, m in enumerate(pr_metrics):
+#         metric_name = m
+#         metric_name_val = 'val_' + m
+
+#         y_tr = hh[metric_name][skp_ep:]
+#         y_vl = hh[metric_name_val][skp_ep:]
+        
+#         ymin = min(set(y_tr).union(y_vl))
+#         ymax = max(set(y_tr).union(y_vl))
+#         lim = (ymax - ymin) * 0.1
+#         ymin, ymax = ymin - lim, ymax + lim
+
+#         # Start figure
+#         fig, ax1 = plt.subplots()
+        
+#         # Plot metrics
+#         ax1.plot(eps, y_tr, color='b', marker='.', linestyle='-', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name))
+#         ax1.plot(eps, y_vl, color='r', marker='.', linestyle='--', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name_val))        
+#         ax1.set_xlabel('Epoch')
+#         ax1.set_ylabel(capitalize_metric(metric_name))
+#         ax1.set_xlim([min(eps)-1, max(eps)+1])
+#         ax1.set_ylim([ymin, ymax])
+#         ax1.tick_params('y', colors='k')
+        
+#         ax1.grid(True)
+#         # plt.legend([metric_name, metric_name_val], loc='best')
+#         # medium.com/@samchaaa/how-to-plot-two-different-scales-on-one-plot-in-matplotlib-with-legend-46554ba5915a
+#         legend = ax1.legend(loc='best', prop={'size': 10})
+#         frame = legend.get_frame()
+#         frame.set_facecolor('0.95')
+#         if title is not None: plt.title(title)
+        
+#         # fig.tight_layout()
+#         if name is not None:
+#             fname = name + '_' + metric_name + '.png'
+#         else:
+#             fname = metric_name + '.png'
+#         figpath = Path(outdir) / fname
+#         plt.savefig(figpath, bbox_inches='tight')
+#         plt.close()
+        
+#     return history
 
 
 
@@ -283,6 +305,38 @@ class NN_REG0(BaseMLModel):
         self.model = model
         
 
+        
+class NN_REG1(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN.
+    """
+    model_name = 'nn_reg1'
+
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+
+        # layers = [1000, 1000,  500, 250, 125, 60, 30]
+        layers = [2000, 2000, 1000, 500, 250, 125, 60]
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        x = self.build_dense_block(layers, inputs)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        if self.opt_name == 'sgd':
+            opt = SGD(lr=1e-4, momentum=0.9)
+        elif self.opt_name == 'adam':
+            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+        else:
+            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model        
+        
+        
 
 class NN_REG_N_LESS(BaseMLModel):
     """ Neural network regressor.
@@ -352,7 +406,7 @@ class NN_REG_L_LESS(BaseMLModel):
     """
     model_name = 'nn_reg_l_less'
 
-    def __init__(self, input_dim, layers, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
@@ -382,7 +436,7 @@ class NN_REG_L_MORE(BaseMLModel):
     """
     model_name = 'nn_reg_l_more'
 
-    def __init__(self, input_dim, layers, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name

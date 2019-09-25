@@ -27,7 +27,7 @@ import pandas as pd
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
-SEED = 42
+SEED = 0
 
 
 # File path
@@ -71,8 +71,12 @@ def parse_args(args):
     # ML models
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
     parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str,
-                        choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg_l_less', 'nn_reg_l_more', 'nn_reg_n_less', 'nn_reg_n_more'], help='ML model (default: lgb_reg).')
+                        choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_l_less', 'nn_reg_l_more',
+                                 'nn_reg_n_less', 'nn_reg_n_more'], help='ML model (default: lgb_reg).')
 
+    # LightGBM params
+    parser.add_argument('--n_trees', default=100, type=int, help='Number of trees (default: 100).')
+    
     # NN hyper_params
     parser.add_argument('-ep', '--epochs', default=200, type=int, help='Number of epochs (default: 200).')
     parser.add_argument('--batch_size', default=32, type=int, help='Batch size (default: 32).')
@@ -136,6 +140,9 @@ def run(args):
     other_fea = args['other_fea']
     fea_list = cell_fea + drug_fea + other_fea    
 
+    # LightGBM params
+    n_trees = args['n_trees']
+    
     # NN params
     epochs = args['epochs']
     batch_size = args['batch_size']
@@ -202,19 +209,6 @@ def run(args):
 
     src = dirpath.name.split('_')[0]
 
-    # Scale 
-    scaler = args['scaler']
-    if scaler is not None:
-        if scaler == 'stnd':
-            scaler = StandardScaler()
-        elif scaler == 'minmax':
-            scaler = MinMaxScaler()
-        elif scaler == 'rbst':
-            scaler = RobustScaler()
-    
-    cols = xdata.columns
-    xdata = pd.DataFrame(scaler.fit_transform(xdata), columns=cols, dtype=np.float32)
-
 
     # -----------------------------------------------
     #       Create outdir and logger
@@ -230,17 +224,34 @@ def run(args):
     
     
     # -----------------------------------------------
+    #       Data preprocessing
+    # -----------------------------------------------
+    # Scale 
+    scaler = args['scaler']
+    if scaler is not None:
+        if scaler == 'stnd':
+            scaler = StandardScaler()
+        elif scaler == 'minmax':
+            scaler = MinMaxScaler()
+        elif scaler == 'rbst':
+            scaler = RobustScaler()
+    
+    cols = xdata.columns
+    xdata = pd.DataFrame(scaler.fit_transform(xdata), columns=cols, dtype=np.float32)    
+    
+    
+    # -----------------------------------------------
     #      ML model configs
     # -----------------------------------------------
     if model_name == 'lgb_reg':
         framework = 'lightgbm'
-        init_kwargs = {'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
+        init_kwargs = {'n_estimators': n_trees, 'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
         fit_kwargs = {'verbose': False}
     elif model_name == 'rf_reg':
         framework = 'sklearn'
         init_kwargs = {'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
         fit_kwargs = {}
-    elif model_name == 'nn_reg0' or 'nn_reg_l_less' or 'nn_reg_l_more' or 'nn_reg_n_less' or 'nn_reg_n_more':
+    elif model_name == 'nn_reg0' or 'nn_reg1' or 'nn_reg_l_less' or 'nn_reg_l_more' or 'nn_reg_n_less' or 'nn_reg_n_more':
         framework = 'keras'
         init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': dr_rate, 'opt_name': opt_name, 'logger': lg.logger}
         fit_kwargs = {'batch_size': batch_size, 'epochs': epochs, 'verbose': 1}  # 'validation_split': 0.1
@@ -249,7 +260,7 @@ def run(args):
     # -----------------------------------------------
     #      Learning curve 
     # -----------------------------------------------
-    lg.logger.info('\n\n{}'.format('=' * 50))
+    lg.logger.info('\n\n{}'.format('-' * 50))
     lg.logger.info(f'Learning curves {src} ...')
     lg.logger.info('=' * 50)
 

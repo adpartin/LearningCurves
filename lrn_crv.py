@@ -451,13 +451,15 @@ def define_keras_callbacks(outdir):
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.75, patience=20, verbose=1, mode='auto',
                                   min_delta=0.0001, cooldown=3, min_lr=0.000000001)
     # early_stop = EarlyStopping(monitor='val_loss', patience=100, verbose=1)
-    early_stop = EarlyStopping(monitor='val_loss', patience=60, verbose=1)
+    early_stop = EarlyStopping(monitor='val_loss', patience=50, verbose=1)
     return [checkpointer, csv_logger, early_stop, reduce_lr]
 
 
 def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear', ytick_scale='linear'):
     """ Takes the entire table of scores across folds and train set sizes, and generates plots of 
     learning curves for the different metrics.
+    This function generates a list of results (rslt) and passes it to plot_lrn_crv(). This representation
+    of results is used in sklearn's learning_curve() function, and thus, we used the same format here.
     Args:
         df : contains train and val scores for cv folds (the scores are the last cv_folds cols)
             metric | tr_set | tr_size |  fold0  |  fold1  |  fold2  |  fold3  |  fold4
@@ -512,14 +514,14 @@ def scale_ticks_params(tick_scale='linear'):
     """
     if tick_scale == 'linear':
         base = None
-        label_scale = 'Linear scale'
+        label_scale = 'Linear Scale'
     else:
         if tick_scale == 'log2':
             base = 2
-            label_scale = 'Log2 scale'
+            label_scale = 'Log2 Scale'
         elif tick_scale == 'log10':
             base = 10
-            label_scale = 'Log10 scale'
+            label_scale = 'Log10 Scale'
         else:
             raise ValueError('The specified tick scale is not supported.')
     return base, label_scale
@@ -543,7 +545,7 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     def plot_single_crv(tr_shards, scores, ax, phase, color=None):
         scores_mean = np.mean(scores, axis=1)
         scores_std  = np.std( scores, axis=1)
-        ax.plot(tr_shards, scores_mean, '.-', color=color, label=f'{phase} score')
+        ax.plot(tr_shards, scores_mean, '.-', color=color, label=f'{phase} Score')
         ax.fill_between(tr_shards, scores_mean - scores_std, scores_mean + scores_std, alpha=0.1, color=color)
 
     # Plot learning curves
@@ -561,14 +563,15 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     ax.set_xlabel(f'Train Dataset Size ({xlabel_scale})')
     if 'log' in xlabel_scale.lower(): ax.set_xscale('log', basex=basex)
 
-    ylbl = ' '.join(s.capitalize() for s in metric_name.split('_'))
+    #ylbl = ' '.join(s.capitalize() for s in metric_name.split('_'))
+    ylbl = capitalize_metric(metric_name)
     ax.set_ylabel(f'{ylbl} ({ylabel_scale})')
     if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)
 
     # Other settings
     if ylim is not None: ax.set_ylim(ylim)
     if xlim is not None: ax.set_ylim(xlim)
-    if title is None: title='Learning curve'
+    if title is None: title='Learning Curve'
     ax.set_title(title)
         
     ax.legend(loc='best', frameon=True)
@@ -580,53 +583,55 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     return ax
 
 
-def power_law_func(x, alpha, beta, gamma):
-    """ docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.power.html """
+
+# --------------------------------------------------------------------------------------------------
+# Power-law utils
+# --------------------------------------------------------------------------------------------------
+def power_law_func_3prm(x, alpha, beta, gamma):
+    """ 3 parameters. docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.power.html """
     return alpha * np.power(x, beta) + gamma
     
     
-def power_law_func_(x, alpha, beta, gamma1, gamma2):
-    """ docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.power.html """
-    return alpha * np.power(x, beta) + gamma1 + gamma2
-    
-    
-def fit_power_law(x, y, p0:list=[30, -0.3, 0.06]):
-    """ Fit learning curve data (train set size vs metric) to power-law.
-    TODO: How should we fit the data across multiple folds? This can
-    be addressed using Bayesian methods (look at Bayesian linear regression).
-    The uncertainty of parameters indicates the consistency of across folds.
+def fit_power_law_3prm(x, y, p0:list=[30, -0.3, 0.06]):
+    """ Fit learning curve data to power-law (3 params).
+    TODO: How should we fit the data across multiple folds?
+    This can be addressed using Bayesian methods (look at Bayesian linear regression).
+    The uncertainty of parameters indicates the consistency across folds.
+    MUKHERJEE et al (2003) performs significance test!
     """
-    prms, prms_cov = optimize.curve_fit(power_law_func, x, y, p0=p0)
+    prms, prms_cov = optimize.curve_fit(power_law_func_3prm, x, y, p0=p0)
     prms_dct = {}
     prms_dct['alpha'], prms_dct['beta'], prms_dct['gamma'] = prms[0], prms[1], prms[2]
     return prms_dct
 
 
-def fit_power_law_(x, y, p0:list=[30, -0.3, 0.06, 0.12]):
-    """ Fit learning curve data (train set size vs metric) to power-law. """
-    prms, prms_cov = optimize.curve_fit(power_law_func_, x, y, p0=p0)
-    prms_dct = {}
-    prms_dct['alpha'], prms_dct['beta'], prms_dct['gamma1'], prms_dct['gamma2'] = prms[0], prms[1], prms[2], prms[3]
-    return prms_dct
-
-
 def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
                            xtick_scale:str='log2', ytick_scale:str='log2',
-                           xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5)):
-    """ ... """
+                           xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
+                           label:str=None, ax=None):
+    
+    """ This function takes the train set size in x and performance in y, and generates a learning curve plot.
+    The power-law model is fitted to the learning curve data.
+    Args:
+        label : string that allows to specify things about the learning curve (for comparison)
+        ax : ax handle from existing plot (this allows to plot results from different runs for comparison)
+    """
     x = x.ravel()
     y = y.ravel()
     
     fontsize = 13
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.plot(x, y, '.-', color=None, label='data');
+    if ax is None: fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot raw data
+    if label is None: label='data'
+    ax.plot(x, y, '.-', color=None, label=label);
 
-    # Fit power-law
-    power_law_params = fit_power_law(x, y)
-    yfit = power_law_func(x, **power_law_params)
-    # power_law_params_ = fit_power_law(x, y)
-    # yfit = power_law_func_(x, **power_law_params_)
-    if plot_fit: ax.plot(x, yfit, '--', color=None, label='fit');    
+    # Fit power-law (3 params)
+    power_law_params = fit_power_law_3prm(x, y)
+    yfit = power_law_func_3prm(x, **power_law_params)
+    
+    # Plot fit
+    if plot_fit: ax.plot(x, yfit, '--', color=None, label=f'{label} Trend');    
         
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
     basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
@@ -634,9 +639,10 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     ax.set_xlabel(f'Training Dataset Size ({xlabel_scale})', fontsize=fontsize)
     if 'log' in xlabel_scale.lower(): ax.set_xscale('log', basex=basex)
 
-    ylabel = ' '.join(s.capitalize() for s in metric_name.split('_'))
+    #ylabel = ' '.join(s.capitalize() for s in metric_name.split('_'))
+    ylabel = capitalize_metric(metric_name)
     ax.set_ylabel(f'{ylabel} ({ylabel_scale})', fontsize=fontsize)
-    if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)
+    if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)        
         
     # ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
     # ax.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
@@ -644,16 +650,16 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     # Add equation (text) on the plot
     # matplotlib.org/3.1.1/gallery/text_labels_and_annotations/usetex_demo.html#sphx-glr-gallery-text-labels-and-annotations-usetex-demo-py
     # eq = r"$\varepsilon_{mae}(m) = \alpha m^{\beta} + \gamma$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}, $\gamma$={power_law_params['gamma']:.2f}"
-    # eq = rf"$\varepsilon(m) = {power_law_params['alpha']:.2f} m^{power_law_params['beta']:.2f} + {power_law_params['gamma']:.2f}$" # TODO: make this work
+    # eq = rf"$\varepsilon(m) = {power_law_params['alpha']:.2f} m^{power_law_params['beta']:.2f} + {power_law_params['gamma']:.2f}$" # TODO: make this work    
     
     eq = r"$\varepsilon(m) = \alpha m^{\beta}$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}"
-    # xloc = 2.0 * x.ravel().min()
-    xloc = x.min() + 0.1*(x.max() - x.min())
+    # xloc = 2.0 * x.min()
+    xloc = x.min() + 0.01*(x.max() - x.min())
     yloc = y.min() + 0.9*(y.max() - y.min())
     ax.text(xloc, yloc, eq,
             {'color': 'black', 'fontsize': fontsize, 'ha': 'left', 'va': 'center',
-             'bbox': {'boxstyle':'round', 'fc':'white', 'ec':'black', 'pad':0.2}})
-    
+             'bbox': {'boxstyle':'round', 'fc':'white', 'ec':'black', 'pad':0.2}})    
+
     # matplotlib.org/users/mathtext.html
     # ax.set_title(r"$\varepsilon_{mae}(m) = \alpha m^{\beta} + \gamma$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}, $\gamma$={power_law_params['gamma']:.2f}");
     if ylim is not None: ax.set_ylim(ylim)
@@ -663,7 +669,10 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     
     ax.legend(loc='best', frameon=True, fontsize=fontsize)
     ax.grid(True)
-    return fig, ax, power_law_params
+    # return fig, ax, power_law_params
+    return ax, power_law_params
+# --------------------------------------------------------------------------------------------------
+
 
 
 def plot_runtime(rt:pd.DataFrame, outdir:Path=None, figsize=(7,5)):
@@ -683,6 +692,10 @@ def plot_runtime(rt:pd.DataFrame, outdir:Path=None, figsize=(7,5)):
     # Save fig
     if outdir is not None: plt.savefig(outdir/'runtime.png', bbox_inches='tight')
 
+        
+def capitalize_metric(met):
+    return ' '.join(s.capitalize() for s in met.split('_'))        
+        
 
 # Define custom metric to calc auroc from regression
 # scikit-learn.org/stable/modules/model_evaluation.html#scoring
