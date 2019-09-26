@@ -45,24 +45,14 @@ def parse_args(args):
     # Input data
     parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to data and splits (default: None).')
 
-    # Select data name
-    # parser.add_argument('--dname', default=None, choices=['combined'], help='Data name (default: `combined`).')
-
-    # Select (cell line) sources 
-    # parser.add_argument('-src', '--src_names', nargs='+',
-    #     default=None, choices=['ccle', 'gcsi', 'gdsc', 'ctrp', 'nci60'],
-    #     help='Data sources to use (relevant only for the `combined` dataset).')
-
     # Select target to predict
     parser.add_argument('-t', '--target_name', default='AUC', type=str, choices=['AUC', 'AUC1'], help='Name of target variable (default: AUC).')
 
     # Select feature types
-    # parser.add_argument('-cf', '--cell_fea', nargs='+', default=['rna'], choices=['rna', 'cnv', 'clb'], help='Cell line features (default: rna).')
     parser.add_argument('-cf', '--cell_fea', nargs='+', default=['GE'], choices=['GE'], help='Cell line features (default: GE).')
-    # parser.add_argument('-df', '--drug_fea', nargs='+', default=['dsc'], choices=['dsc', 'fng', 'dlb'], help='Drug features (default: dsc).')
     parser.add_argument('-df', '--drug_fea', nargs='+', default=['DD'], choices=['DD'], help='Drug features (default: DD).')
-    parser.add_argument('-of', '--other_fea', default=[], choices=[],
-            help='Other feature types (derived from cell lines and drugs). E.g.: cancer type, etc).') # ['cell_labels', 'drug_labels', 'ctype', 'csite', 'rna_clusters']
+    # parser.add_argument('-of', '--other_fea', default=[], choices=[],
+    #         help='Other feature types (derived from cell lines and drugs). E.g.: cancer type, etc).') # ['cell_labels', 'drug_labels', 'ctype', 'csite', 'rna_clusters']
 
     # Data split methods
     parser.add_argument('-cvm', '--cv_method', default='simple', type=str, choices=['simple', 'group'], help='CV split method (default: simple).')
@@ -81,7 +71,8 @@ def parse_args(args):
     parser.add_argument('-ep', '--epochs', default=200, type=int, help='Number of epochs (default: 200).')
     parser.add_argument('--batch_size', default=32, type=int, help='Batch size (default: 32).')
     parser.add_argument('--dr_rate', default=0.2, type=float, help='Dropout rate (default: 0.2).')
-    parser.add_argument('-sc', '--scaler', default='stnd', type=str, choices=['stnd', 'minmax', 'rbst'], help='Feature normalization method (default: stnd).')
+    parser.add_argument('-sc', '--scaler', default='stnd', type=str, choices=['stnd', 'minmax', 'rbst'],
+            help='Feature normalization method (stnd, minmax, rbst) (default: stnd).')
 
     parser.add_argument('--opt', default='sgd', type=str, choices=['sgd', 'adam'], help='Optimizer name (default: sgd).')
 
@@ -91,9 +82,11 @@ def parse_args(args):
     parser.add_argument('--clr_gamma', type=float, default=0.999994, help='Gamma parameter for learning cycle LR.')
 
     # Learning curve
-    parser.add_argument('--n_shards', default=5, type=int, help='Number of ticks in the learning curve plot (default: 5).')
-    parser.add_argument('--min_shard', default=128, type=int, help='Smallest data size shard (default: 128).')
-    parser.add_argument('--max_shard', default=None, type=int, help='Laregt data size shard (default: None).')
+    parser.add_argument('--shard_step_scale', default='log2', type=str, choices=['log2', 'log', 'log10', 'linear'],
+            help='Scale of progressive sampling of shards (log2, log, log10, linear) (default: log2).')
+    parser.add_argument('--min_shard', default=128, type=int, help='The lower bound for the shard sizes (default: 128).')
+    parser.add_argument('--max_shard', default=None, type=int, help='The upper bound for the shard sizes (default: None).')
+    parser.add_argument('--n_shards', default=5, type=int, help='Number of shards (used only when shard_step_scale is `linear` (default: 7).')
 
     # Define n_jobs
     parser.add_argument('--n_jobs', default=4, type=int, help='Default: 4.')
@@ -129,7 +122,7 @@ def dump_dict(dct, outpath='./dict.txt'):
     
 def run(args):
     dirpath = Path(args['dirpath'])
-    assert dirpath.exists(), 'dirpath cannot be None.'
+    assert dirpath.exists(), 'You must specify the dirpath.'
 
     target_name = args['target_name']
     cv_folds = args['cv_folds']
@@ -137,8 +130,9 @@ def run(args):
     # Features 
     cell_fea = args['cell_fea']
     drug_fea = args['drug_fea']
-    other_fea = args['other_fea']
-    fea_list = cell_fea + drug_fea + other_fea    
+    # other_fea = args['other_fea']
+    # fea_list = cell_fea + drug_fea + other_fea    
+    fea_list = cell_fea + drug_fea
 
     # LightGBM params
     n_trees = args['n_trees']
@@ -154,9 +148,10 @@ def run(args):
                         'max_lr': args['clr_max_lr'], 'gamma': args['clr_gamma']}
 
     # Learning curve
-    n_shards = args['n_shards']
+    shard_step_scale = args['shard_step_scale']
     min_shard = args['min_shard']
     max_shard = args['max_shard']
+    n_shards = args['n_shards']
 
     # Other params
     # framework = args['framework']
@@ -237,7 +232,7 @@ def run(args):
             scaler = RobustScaler()
     
     cols = xdata.columns
-    xdata = pd.DataFrame(scaler.fit_transform(xdata), columns=cols, dtype=np.float32)    
+    xdata = pd.DataFrame( scaler.fit_transform(xdata), columns=cols, dtype=np.float32 )
     
     
     # -----------------------------------------------
@@ -262,11 +257,11 @@ def run(args):
     # -----------------------------------------------
     lg.logger.info('\n\n{}'.format('-' * 50))
     lg.logger.info(f'Learning curves {src} ...')
-    lg.logger.info('=' * 50)
+    lg.logger.info('-' * 50)
 
     t0 = time()
     lc = LearningCurve( X=xdata, Y=ydata, cv=None, cv_lists=(tr_id, vl_id),
-        n_shards=n_shards, min_shard=min_shard, max_shard=max_shard, # shard_step_scale='log10',
+        shard_step_scale=shard_step_scale, n_shards=n_shards, min_shard=min_shard, max_shard=max_shard,
         args=args, logger=lg.logger, outdir=run_outdir )
 
     lrn_crv_scores = lc.trn_learning_curve( framework=framework, mltype=mltype, model_name=model_name,

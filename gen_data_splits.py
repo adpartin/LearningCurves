@@ -84,7 +84,7 @@ def plot_hist(x, var_name, fit=None, bins=100, path='hist.png'):
         fit = stats.norm
         label = f'norm fit: $\mu$={mu:.2f}, $\sigma$={sigma:.2f}'
     else:
-        label = ''
+        label = None
     
     alpha = 0.6
     fig, ax = plt.subplots()
@@ -96,7 +96,7 @@ def plot_hist(x, var_name, fit=None, bins=100, path='hist.png'):
     sns.distplot(x, bins=bins, kde=False, fit=fit, 
                  hist_kws={'linewidth': 2, 'alpha': alpha, 'color': 'b'})
     plt.grid(True)
-    plt.legend()
+    if label is not None: plt.legend()
     plt.title(var_name + ' hist')
     plt.savefig(path, bbox_inches='tight')
 
@@ -170,7 +170,7 @@ def run(args):
     lg.logger.info('data.shape {}'.format(data.shape))
 
     # Split features and traget, and dump to file
-    lg.logger.info('\nSplit features and target.')
+    lg.logger.info('\nSplit features and meta.')
     # meta = data[['AUC', 'CELL', 'DRUG']]
     # xdata = data.drop(columns=['AUC', 'CELL', 'DRUG'])
     xdata = extract_subset_fea(data, fea_list=fea_list, fea_sep='_')

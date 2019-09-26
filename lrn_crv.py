@@ -44,21 +44,21 @@ import ml_models
 # --------------------------------------------------------------------------------
 class LearningCurve():
     """
-    Train estimator using multiple train set sizes and generate learning curves for multiple metrics.
-    The CV splitter splits the input dataset into cv_folds data subsets.
+    Train estimator using multiple shards (train set sizes) and generate learning curves for multiple performance metrics.
     Examples:
-        cv = sklearn.model_selection.KFold(n_splits=5, shuffle=False, random_state=0)
-        lrn_curve.my_learning_curve(X=xdata, Y=ydata, mltype='reg', cv=cv, n_shards=5)
+        lc = LearningCurve(xdata, ydata, cv_lists=(tr_ids, vl_ids))
+        lrn_crv_scores = lc.trn_learning_curve( framework=framework, mltype=mltype, model_name=model_name,
+                                                init_kwargs=init_kwargs, fit_kwargs=fit_kwargs, clr_keras_kwargs=clr_keras_kwargs)
     """
     def __init__(self,
             X, Y,
             cv=5,
             cv_lists=None,  # (tr_id, vl_id)
-            n_shards: int=5,
-            # shard_step_scale: str='log2',
-            # shard_frac=[],
+            shard_step_scale: str='log2',
             min_shard = 0,
             max_shard = None,
+            n_shards: int=5,
+            # shard_frac=[],
             args=None,
             logger=None,
             outdir='./'):
@@ -68,11 +68,15 @@ class LearningCurve():
             Y : array-like (pd.DataFrame or np.ndarray)
             cv : (optional) number of cv folds (int) or sklearn cv splitter --> scikit-learn.org/stable/glossary.html#term-cv-splitter
             cv_lists : tuple of 2 dicts, cv_lists[0] and cv_lists[1], that contain the tr and vl folds, respectively 
-            n_shards : number of dataset splits in the learning curve (used if shard_frac is None)
+
+            shard_step_scale : specifies how to generate the shard values. 
+                Available values: 'linear', 'log2', 'log10'.
+
+            min_shard : min shard value in the case when shard_step_scale is 'log2' or 'log10'
+            max_shard : max shard value in the case when shard_step_scale is 'log2' or 'log10'
+
+            n_shards : number of shards in the learning curve (used only in the shard_step_scale is 'linear')
             
-            shard_step_scale : if n_shards is provided, this will generate a list of training set sizes with steps
-                specified by this arg. Available values: 'linear', 'log2', 'log10', 'log'.
-                e.g., if n_shards=5 and shard_step_scale='linear', then it generates ...
             shard_frac : list of relative numbers of training samples that are used to generate learning curves
                 e.g., shard_frac=[0.1, 0.2, 0.4, 0.7, 1.0].
                 If this arg is not provided, then the training shards are generated from n_shards and shard_step_scale.
@@ -83,11 +87,13 @@ class LearningCurve():
         self.Y = pd.DataFrame(Y).values
         self.cv = cv
         self.cv_lists = cv_lists
-        self.n_shards = n_shards
-        # self.shard_step_scale = shard_step_scale 
-        # self.shard_frac = shard_frac
+
+        self.shard_step_scale = shard_step_scale 
         self.min_shard = min_shard
         self.max_shard = max_shard
+        self.n_shards = n_shards
+        # self.shard_frac = shard_frac
+
         self.args = args
         self.logger = logger
         self.outdir = Path(outdir)
@@ -146,34 +152,7 @@ class LearningCurve():
 
 
     def create_tr_shards_list(self):
-        """ Generate the list of training shard sizes.
-        TODO: at this point self.n_shards is not used since we all shrds. """
-#         if len(self.shard_frac)==0:
-#             # if any( [self.shard_step_scale.lower()==s for s in ['lin', 'linear']] ):
-#             scale = self.shard_step_scale.lower()
-#             if scale == 'linear':
-#                 self.shard_frac = np.linspace(0.1, 1.0, self.n_shards)
-#             else:
-#                 if scale == 'log2':
-#                     base = 2
-#                 elif scale == 'log10':
-#                     base = 10
-#                 # In np.logspace the sequence starts at base ** start 
-#                 # self.shard_frac = np.logspace(start=0.0, stop=1.0, num=self.n_shards, endpoint=True, base=base)/base
-#                 # shard_frac_small = list(np.logspace(start=0.0, stop=1.0, num=2*self.n_shards, endpoint=True, base=base)/(self.X.shape[0]/10))
-#                 # shard_frac_low_range = list(np.linspace(start=10, stop=int(0.1*self.X.shape[0]), num=2*self.n_shards, endpoint=False)/self.X.shape[0])
-#                 shard_frac = list(np.logspace(start=0.0, stop=1.0, num=self.n_shards, endpoint=True, base=base)/base)
-#                 # shard_frac.extend(shard_frac_low_range)
-#                 self.shard_frac = np.array( sorted(list(set(shard_frac))) )
-
-#             if self.logger: self.logger.info(f'Shard step spacing: {self.shard_step_scale}.')
-
-#         if self.cv_folds == 1:
-#             self.tr_shards = [int(n) for n in (1-self.vl_size) * self.X.shape[0] * self.shard_frac if n>0]
-#         else: 
-#             self.tr_shards = [int(n) for n in (self.cv_folds-1)/self.cv_folds * self.X.shape[0] * self.shard_frac if n>0]
-
-        # --------------------------------------------
+        """ Generate the list of training shards (training sizes). """
         # Fixed spacing
         if self.max_shard is None:
             if self.cv_folds == 1:
@@ -182,12 +161,28 @@ class LearningCurve():
                 self.max_shard = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
                 
         # Full vector of shards
-        m = 2 ** np.array(np.arange(30))[1:]
+        scale = self.shard_step_scale.lower()
+        if scale == 'linear':
+            m = np.linspace(0, self.max_shard, self.n_shards+1)[1:]
+        else:
+            if scale == 'log2':
+                m = 2 ** np.array(np.arange(30))[1:]
+            elif scale == 'log':
+                m = np.exp( np.array(np.arange(8))[1:] )
+            elif scale == 'log10':
+                m = 10 ** np.array(np.arange(8))[1:]
 
+        m = np.array( [int(i) for i in m] ) # cast to int
+                
         # Set min shard
         idx_min = np.argmin( np.abs( m - self.min_shard ) )
-        if m[idx_min] > self.min_shard: idx_min = idx_min - 1
-        m = m[idx_min:]
+        # if m[idx_min] > self.min_shard and idx_min > 0:     m = m[idx_min-1:]
+        # elif m[idx_min] > self.min_shard and idx_min == 0:  m = np.concatenate( (np.array([self.min_shard]), m) )
+        if m[idx_min] > self.min_shard:
+            m = m[idx_min:]
+            m = np.concatenate( (np.array([self.min_shard]), m) )
+        else:
+            m = m[idx_min:]
 
         # Set max shard
         idx_max = np.argmin( np.abs( m - self.max_shard ) )
@@ -357,6 +352,7 @@ class LearningCurve():
         # Plot learning curves
         if plot:
             plot_lrn_crv_all_metrics( scores_df, outdir=self.outdir )
+            plot_lrn_crv_all_metrics( scores_df, outdir=self.outdir, xtick_scale='log2', ytick_scale='log2' )
             plot_runtime( runtime_df, outdir=self.outdir )
 
         return scores_df
@@ -498,7 +494,10 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
         rslt.append(tr.values if tr.values.shape[0]>0 else None)
         rslt.append(vl.values if vl.values.shape[0]>0 else None)
 
-        fname = 'lrn_crv_' + metric_name + '.png'
+        if xtick_scale != 'linear' or ytick_scale != 'linear':
+            fname = 'lrn_crv_' + metric_name + 'log.png'
+        else:
+            fname = 'lrn_crv_' + metric_name + '.png'
         title = 'Learning curve'
 
         path = outdir / fname
@@ -549,6 +548,7 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
         ax.fill_between(tr_shards, scores_mean - scores_std, scores_mean + scores_std, alpha=0.1, color=color)
 
     # Plot learning curves
+    fontsize = 13
     if ax is None: fig, ax = plt.subplots(figsize=figsize)
         
     if tr_scores is not None:
@@ -560,12 +560,11 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
     basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
 
-    ax.set_xlabel(f'Train Dataset Size ({xlabel_scale})')
+    ax.set_xlabel(f'Train Dataset Size ({xlabel_scale})', fontsize=fontsize)
     if 'log' in xlabel_scale.lower(): ax.set_xscale('log', basex=basex)
 
-    #ylbl = ' '.join(s.capitalize() for s in metric_name.split('_'))
-    ylbl = capitalize_metric(metric_name)
-    ax.set_ylabel(f'{ylbl} ({ylabel_scale})')
+    ylabel = capitalize_metric(metric_name)
+    ax.set_ylabel(f'{ylabel} ({ylabel_scale})', fontsize=fontsize)
     if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)
 
     # Other settings
@@ -613,8 +612,8 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     """ This function takes the train set size in x and performance in y, and generates a learning curve plot.
     The power-law model is fitted to the learning curve data.
     Args:
-        label : string that allows to specify things about the learning curve (for comparison)
         ax : ax handle from existing plot (this allows to plot results from different runs for comparison)
+        pwr_law_params : power-law model parameters after fitting
     """
     x = x.ravel()
     y = y.ravel()
@@ -639,7 +638,6 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     ax.set_xlabel(f'Training Dataset Size ({xlabel_scale})', fontsize=fontsize)
     if 'log' in xlabel_scale.lower(): ax.set_xscale('log', basex=basex)
 
-    #ylabel = ' '.join(s.capitalize() for s in metric_name.split('_'))
     ylabel = capitalize_metric(metric_name)
     ax.set_ylabel(f'{ylabel} ({ylabel_scale})', fontsize=fontsize)
     if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)        
