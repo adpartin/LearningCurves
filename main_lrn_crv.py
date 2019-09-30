@@ -57,6 +57,7 @@ def parse_args(args):
     # Data split methods
     parser.add_argument('-cvm', '--cv_method', default='simple', type=str, choices=['simple', 'group'], help='CV split method (default: simple).')
     parser.add_argument('-cvf', '--cv_folds', default=5, type=str, help='Number cross-val folds (default: 5).')
+    parser.add_argument('-cvf_arr', '--cv_folds_arr', nargs='+', type=int, default=None, help='The specific folds in the cross-val run (default: None).')
     
     # ML models
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
@@ -87,7 +88,8 @@ def parse_args(args):
     parser.add_argument('--min_shard', default=128, type=int, help='The lower bound for the shard sizes (default: 128).')
     parser.add_argument('--max_shard', default=None, type=int, help='The upper bound for the shard sizes (default: None).')
     parser.add_argument('--n_shards', default=5, type=int, help='Number of shards (used only when shard_step_scale is `linear` (default: 7).')
-
+    parser.add_argument('--shards_arr', nargs='+', type=int, default=None, help='List of the actual shards in the learning curve plot (default: None).')
+    
     # Define n_jobs
     parser.add_argument('--n_jobs', default=4, type=int, help='Default: 4.')
 
@@ -120,12 +122,27 @@ def dump_dict(dct, outpath='./dict.txt'):
             file.write('{}: {}\n'.format(k, dct[k]))
     
     
+def scale_fea(xdata, scaler_name='stnd', dtype=np.float32):
+    """ Returns the scaled dataframe. """
+    if scaler_name is not None:
+        if scaler_name == 'stnd':
+            scaler = StandardScaler()
+        elif scaler_name == 'minmax':
+            scaler = MinMaxScaler()
+        elif scaler_name == 'rbst':
+            scaler = RobustScaler()
+    
+    cols = xdata.columns
+    return pd.DataFrame( scaler.fit_transform(xdata), columns=cols, dtype=dtype )    
+    
+    
 def run(args):
     dirpath = Path(args['dirpath'])
     assert dirpath.exists(), 'You must specify the dirpath.'
 
     target_name = args['target_name']
     cv_folds = args['cv_folds']
+    cv_folds_arr = args['cv_folds_arr']
 
     # Features 
     cell_fea = args['cell_fea']
@@ -152,6 +169,7 @@ def run(args):
     min_shard = args['min_shard']
     max_shard = args['max_shard']
     n_shards = args['n_shards']
+    shards_arr = args['shards_arr']
 
     # Other params
     # framework = args['framework']
@@ -221,18 +239,7 @@ def run(args):
     # -----------------------------------------------
     #       Data preprocessing
     # -----------------------------------------------
-    # Scale 
-    scaler = args['scaler']
-    if scaler is not None:
-        if scaler == 'stnd':
-            scaler = StandardScaler()
-        elif scaler == 'minmax':
-            scaler = MinMaxScaler()
-        elif scaler == 'rbst':
-            scaler = RobustScaler()
-    
-    cols = xdata.columns
-    xdata = pd.DataFrame( scaler.fit_transform(xdata), columns=cols, dtype=np.float32 )
+    xdata = scale_fea(xdata=xdata, scaler_name=args['scaler'])  # scale features
     
     
     # -----------------------------------------------
@@ -260,8 +267,8 @@ def run(args):
     lg.logger.info('-' * 50)
 
     t0 = time()
-    lc = LearningCurve( X=xdata, Y=ydata, cv=None, cv_lists=(tr_id, vl_id),
-        shard_step_scale=shard_step_scale, n_shards=n_shards, min_shard=min_shard, max_shard=max_shard,
+    lc = LearningCurve( X=xdata, Y=ydata, cv=None, cv_lists=(tr_id, vl_id), cv_folds_arr=cv_folds_arr,
+        shard_step_scale=shard_step_scale, n_shards=n_shards, min_shard=min_shard, max_shard=max_shard, shards_arr=shards_arr,
         args=args, logger=lg.logger, outdir=run_outdir )
 
     lrn_crv_scores = lc.trn_learning_curve( framework=framework, mltype=mltype, model_name=model_name,

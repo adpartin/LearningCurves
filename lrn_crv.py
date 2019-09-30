@@ -1,8 +1,6 @@
 """
 Functions to generate learning curves.
 Records performance (error or score) vs training set size.
-
-TODO: move utils.calc_scores to a more local function.
 """
 import os
 import sys
@@ -45,7 +43,7 @@ import ml_models
 class LearningCurve():
     """
     Train estimator using multiple shards (train set sizes) and generate learning curves for multiple performance metrics.
-    Examples:
+    Example:
         lc = LearningCurve(xdata, ydata, cv_lists=(tr_ids, vl_ids))
         lrn_crv_scores = lc.trn_learning_curve( framework=framework, mltype=mltype, model_name=model_name,
                                                 init_kwargs=init_kwargs, fit_kwargs=fit_kwargs, clr_keras_kwargs=clr_keras_kwargs)
@@ -54,11 +52,12 @@ class LearningCurve():
             X, Y,
             cv=5,
             cv_lists=None,  # (tr_id, vl_id)
+            cv_folds_arr=None,
             shard_step_scale: str='log2',
             min_shard = 0,
             max_shard = None,
             n_shards: int=5,
-            # shard_frac=[],
+            shards_arr: list=[],
             args=None,
             logger=None,
             outdir='./'):
@@ -67,7 +66,8 @@ class LearningCurve():
             X : array-like (pd.DataFrame or np.ndarray)
             Y : array-like (pd.DataFrame or np.ndarray)
             cv : (optional) number of cv folds (int) or sklearn cv splitter --> scikit-learn.org/stable/glossary.html#term-cv-splitter
-            cv_lists : tuple of 2 dicts, cv_lists[0] and cv_lists[1], that contain the tr and vl folds, respectively 
+            cv_lists : tuple of 2 dicts, cv_lists[0] and cv_lists[1], that contain the tr and vl folds, respectively
+            cv_folds_arr : list that contains the specific folds in the cross-val run
 
             shard_step_scale : specifies how to generate the shard values. 
                 Available values: 'linear', 'log2', 'log10'.
@@ -76,6 +76,7 @@ class LearningCurve():
             max_shard : max shard value in the case when shard_step_scale is 'log2' or 'log10'
 
             n_shards : number of shards in the learning curve (used only in the shard_step_scale is 'linear')
+            shards_arr : list ints specifying the shards to process (e.g., [128, 256, 512])
             
             shard_frac : list of relative numbers of training samples that are used to generate learning curves
                 e.g., shard_frac=[0.1, 0.2, 0.4, 0.7, 1.0].
@@ -87,12 +88,13 @@ class LearningCurve():
         self.Y = pd.DataFrame(Y).values
         self.cv = cv
         self.cv_lists = cv_lists
+        self.cv_folds_arr = cv_folds_arr
 
         self.shard_step_scale = shard_step_scale 
         self.min_shard = min_shard
         self.max_shard = max_shard
         self.n_shards = n_shards
-        # self.shard_frac = shard_frac
+        self.shards_arr = shards_arr
 
         self.args = args
         self.logger = logger
@@ -119,9 +121,15 @@ class LearningCurve():
             if self.cv_folds == 1:
                 self.vl_size = vl_id.shape[0]/(vl_id.shape[0] + tr_id.shape[0])
 
+#             for fold in range(tr_id.shape[1]):
+#                 tr_dct[fold] = tr_id.iloc[:, fold].dropna().values.astype(int).tolist()
+#                 vl_dct[fold] = vl_id.iloc[:, fold].dropna().values.astype(int).tolist()
+                
             for fold in range(tr_id.shape[1]):
-                tr_dct[fold] = tr_id.iloc[:, fold].dropna().values.astype(int).tolist()
-                vl_dct[fold] = vl_id.iloc[:, fold].dropna().values.astype(int).tolist()
+                if fold+1 in self.cv_folds_arr:
+                    tr_dct[fold] = tr_id.iloc[:, fold].dropna().values.astype(int).tolist()
+                    vl_dct[fold] = vl_id.iloc[:, fold].dropna().values.astype(int).tolist()
+                
 
         # Generate folds on the fly if no pre-defined folds were passed
         else:
@@ -153,50 +161,54 @@ class LearningCurve():
 
     def create_tr_shards_list(self):
         """ Generate the list of training shards (training sizes). """
-        # Fixed spacing
-        if self.max_shard is None:
-            if self.cv_folds == 1:
-                self.max_shard = int( (1-self.vl_size) * self.X.shape[0] )
-            else: 
-                self.max_shard = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
-                
-        # Full vector of shards
-        scale = self.shard_step_scale.lower()
-        if scale == 'linear':
-            m = np.linspace(0, self.max_shard, self.n_shards+1)[1:]
+        if self.shards_arr is not None:
+            self.tr_shards = self.shards_arr
+            
         else:
-            if scale == 'log2':
-                m = 2 ** np.array(np.arange(30))[1:]
-            elif scale == 'log':
-                m = np.exp( np.array(np.arange(8))[1:] )
-            elif scale == 'log10':
-                m = 10 ** np.array(np.arange(8))[1:]
+            # Fixed spacing
+            if self.max_shard is None:
+                if self.cv_folds == 1:
+                    self.max_shard = int( (1-self.vl_size) * self.X.shape[0] )
+                else: 
+                    self.max_shard = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
 
-        m = np.array( [int(i) for i in m] ) # cast to int
-                
-        # Set min shard
-        idx_min = np.argmin( np.abs( m - self.min_shard ) )
-        # if m[idx_min] > self.min_shard and idx_min > 0:     m = m[idx_min-1:]
-        # elif m[idx_min] > self.min_shard and idx_min == 0:  m = np.concatenate( (np.array([self.min_shard]), m) )
-        if m[idx_min] > self.min_shard:
-            m = m[idx_min:]
-            m = np.concatenate( (np.array([self.min_shard]), m) )
-        else:
-            m = m[idx_min:]
+            # Full vector of shards
+            scale = self.shard_step_scale.lower()
+            if scale == 'linear':
+                m = np.linspace(0, self.max_shard, self.n_shards+1)[1:]
+            else:
+                if scale == 'log2':
+                    m = 2 ** np.array(np.arange(30))[1:]
+                elif scale == 'log':
+                    m = np.exp( np.array(np.arange(8))[1:] )
+                elif scale == 'log10':
+                    m = 10 ** np.array(np.arange(8))[1:]
 
-        # Set max shard
-        idx_max = np.argmin( np.abs( m - self.max_shard ) )
-        if m[idx_max] > self.max_shard:
-            m = list(m[:idx_max])    # all values EXcluding the last one
-            m.append(self.max_shard)
-        else:
-            m = list(m[:idx_max+1])  # all values INcluding the last one
-            m.append(self.max_shard) # TODO: should this be also added??
-            # If the diff btw max_samples and the latest shards (m[-1] - m[-2]) is "too small", then remove max_samples from the possible shards.
-            if 0.5*m[-3] > (m[-1] - m[-2]): m = m[:-1]
-        
-        # self.tr_shards = m[:-self.n_shards]
-        self.tr_shards = m
+            m = np.array( [int(i) for i in m] ) # cast to int
+
+            # Set min shard
+            idx_min = np.argmin( np.abs( m - self.min_shard ) )
+            # if m[idx_min] > self.min_shard and idx_min > 0:     m = m[idx_min-1:]
+            # elif m[idx_min] > self.min_shard and idx_min == 0:  m = np.concatenate( (np.array([self.min_shard]), m) )
+            if m[idx_min] > self.min_shard:
+                m = m[idx_min:]
+                m = np.concatenate( (np.array([self.min_shard]), m) )
+            else:
+                m = m[idx_min:]
+
+            # Set max shard
+            idx_max = np.argmin( np.abs( m - self.max_shard ) )
+            if m[idx_max] > self.max_shard:
+                m = list(m[:idx_max])    # all values EXcluding the last one
+                m.append(self.max_shard)
+            else:
+                m = list(m[:idx_max+1])  # all values INcluding the last one
+                m.append(self.max_shard) # TODO: should this be also added??
+                # If the diff btw max_samples and the latest shards (m[-1] - m[-2]) is "too small", then remove max_samples from the possible shards.
+                if 0.5*m[-3] > (m[-1] - m[-2]): m = m[:-1]
+
+            # self.tr_shards = m[:-self.n_shards]
+            self.tr_shards = m
         # --------------------------------------------
         
         if self.logger is not None: self.logger.info('Train shards: {}\n'.format(self.tr_shards))
@@ -241,7 +253,8 @@ class LearningCurve():
 
         # CV loop
         for fold, (tr_k, vl_k) in enumerate(zip( self.tr_dct.keys(), self.vl_dct.keys() )):
-            if self.logger is not None: self.logger.info(f'Fold {fold+1}/{self.cv_folds}')
+            fold = fold + 1
+            if self.logger is not None: self.logger.info(f'Fold {fold}/{self.cv_folds}')
 
             # Get the indices for this fold
             tr_id = self.tr_dct[tr_k]
@@ -333,7 +346,7 @@ class LearningCurve():
             # tr_df_tmp = scores_to_df(tr_scores_all)
             # vl_df_tmp = scores_to_df(vl_scores_all)
             scores_all_df_tmp = pd.concat([scores_to_df(tr_scores_all), scores_to_df(vl_scores_all)], axis=0)
-            scores_all_df_tmp.to_csv( self.outdir / ('_lrn_crv_scores_cv' + str(fold+1) + '.csv'), index=False )
+            scores_all_df_tmp.to_csv( self.outdir / ('_lrn_crv_scores_cv' + str(fold) + '.csv'), index=False )
 
         # Scores to df
         tr_scores_df = scores_to_df( tr_scores_all )
@@ -363,7 +376,7 @@ class LearningCurve():
         keras.utils.plot_model(model, to_file=self.outdir/'nn_model.png')
 
         # Create output dir
-        trn_outdir = self.outdir / ('cv'+str(fold+1) + '_sz'+str(tr_sz))
+        trn_outdir = self.outdir / ('cv'+str(fold) + '_sz'+str(tr_sz))
         os.makedirs(trn_outdir, exist_ok=False)
         
         # Keras callbacks
@@ -395,7 +408,7 @@ class LearningCurve():
     def trn_lgbm_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
         """ Train and save LigthGBM model. """
         # Create output dir
-        trn_outdir = self.outdir / ('cv'+str(fold+1) + '_sz'+str(tr_sz))
+        trn_outdir = self.outdir / ('cv'+str(fold) + '_sz'+str(tr_sz))
         # os.makedirs(trn_outdir, exist_ok=False)
         os.makedirs(trn_outdir, exist_ok=True)
 
@@ -419,7 +432,7 @@ class LearningCurve():
     def trn_sklearn_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
         """ Train and save sklearn model. """
         # Create output dir
-        trn_outdir = self.outdir / ('cv'+str(fold+1) + '_sz'+str(tr_sz))
+        trn_outdir = self.outdir / ('cv'+str(fold) + '_sz'+str(tr_sz))
         # os.makedirs(trn_outdir, exist_ok=False)
         os.makedirs(trn_outdir, exist_ok=True)
 
@@ -495,7 +508,7 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
         rslt.append(vl.values if vl.values.shape[0]>0 else None)
 
         if xtick_scale != 'linear' or ytick_scale != 'linear':
-            fname = 'lrn_crv_' + metric_name + 'log.png'
+            fname = 'lrn_crv_' + metric_name + '_log.png'
         else:
             fname = 'lrn_crv_' + metric_name + '.png'
         title = 'Learning curve'
