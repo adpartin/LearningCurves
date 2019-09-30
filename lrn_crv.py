@@ -124,6 +124,8 @@ class LearningCurve():
 #             for fold in range(tr_id.shape[1]):
 #                 tr_dct[fold] = tr_id.iloc[:, fold].dropna().values.astype(int).tolist()
 #                 vl_dct[fold] = vl_id.iloc[:, fold].dropna().values.astype(int).tolist()
+
+            if self.cv_folds_arr is None: self.cv_folds_arr = [f+1 for f in range(self.cv_folds)]
                 
             for fold in range(tr_id.shape[1]):
                 if fold+1 in self.cv_folds_arr:
@@ -678,7 +680,8 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     if title is None: title='Learning curve (power-law)'
     ax.set_title(title)
     
-    ax.legend(loc='best', frameon=True, fontsize=fontsize)
+    # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
+    ax.legend(frameon=True, fontsize=fontsize, bbox_to_anchor=(1.04, 1), loc='upper left')
     ax.grid(True)
     # return fig, ax, power_law_params
     return ax, power_law_params

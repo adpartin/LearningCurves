@@ -121,6 +121,22 @@ def dump_dict(dct, outpath='./dict.txt'):
         for k in sorted(dct.keys()):
             file.write('{}: {}\n'.format(k, dct[k]))
     
+
+def get_file(fpath):
+    return pd.read_csv(fpath, header=None).squeeze().values if fpath.is_file() else None
+
+
+def read_data_file(fpath, file_format='csv'):
+    fpath = Path(fpath)
+    if fpath.is_file():
+        if file_format=='csv':
+            df = pd.read_csv( fpath )
+        elif file_format=='parquet':
+            df = pd.read_parquet( fpath )
+        else:
+            raise ValueError('file format is not supported.')
+    return df    
+    
     
 def scale_fea(xdata, scaler_name='stnd', dtype=np.float32):
     """ Returns the scaled dataframe. """
@@ -195,20 +211,6 @@ def run(args):
     # -----------------------------------------------
     #       Load data and pre-proc
     # -----------------------------------------------
-    def get_file(fpath):
-        return pd.read_csv(fpath, header=None).squeeze().values if fpath.is_file() else None
-
-    def read_data_file(fpath, file_format='csv'):
-        fpath = Path(fpath)
-        if fpath.is_file():
-            if file_format=='csv':
-                df = pd.read_csv( fpath )
-            elif file_format=='parquet':
-                df = pd.read_parquet( fpath )
-            else:
-                raise ValueError('file format is not supported.')
-        return df
-
     xdata = read_data_file( dirpath/'xdata.parquet', 'parquet' )
     meta  = read_data_file( dirpath/'meta.parquet', 'parquet' )
     ydata = meta[[target_name]]
