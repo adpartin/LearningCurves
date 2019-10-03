@@ -145,8 +145,13 @@ def plot_prfrm_metrics(history=None, logfile_path=None, title=None, name=None, s
         fig, ax1 = plt.subplots()
         
         # Plot metrics
-        ax1.plot(eps, y_tr, color='b', marker='.', linestyle='-', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name))
-        ax1.plot(eps, y_vl, color='r', marker='.', linestyle='--', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name_val))
+        alpha = 0.6
+        linewidth = 1
+        fontsize = 12
+        ax1.plot(eps, y_tr, color='b', marker='.', linestyle='-', linewidth=linewidth, alpha=alpha,
+                 label=capitalize_metric(metric_name))
+        ax1.plot(eps, y_vl, color='r', marker='.', linestyle='--', linewidth=linewidth, alpha=alpha,
+                 label=capitalize_metric(metric_name_val))
         ax1.set_xlabel('Epoch')
         ax1.set_ylabel(capitalize_metric(metric_name))
         ax1.set_xlim([min(eps)-1, max(eps)+1])
@@ -160,9 +165,9 @@ def plot_prfrm_metrics(history=None, logfile_path=None, title=None, name=None, s
         if logfile_path is None: # learning rate is not logged into log file (so it's only available from history)
             if (add_lr is True) and ('lr' in hh):
                 ax2 = ax1.twinx()
-                ax2.plot(eps, hh['lr'][skp_ep:], color='g', marker='.', linestyle=':', linewidth=1,
-                         alpha=0.6, markersize=5, label='LR')
-                ax2.set_ylabel('Learning rate', color='g', fontsize=12)
+                ax2.plot(eps, hh['lr'][skp_ep:], color='g', marker='.', linestyle=':', linewidth=linewidth,
+                         alpha=alpha, markersize=5, label='LR')
+                ax2.set_ylabel('Learning rate', color='g', fontsize=fontsize)
 
                 ax2.set_yscale('log') # 'linear'
                 ax2.tick_params('y', colors='g')
@@ -261,17 +266,31 @@ class BaseMLModel():
         return adj_r2
 
 
-    def build_dense_block(self, layers, inputs, name=''):
+    def build_dense_block(self, layers, inputs, batchnorm=True, name=''):
         """ This function only applicable to keras NNs. """
         for i, l_size in enumerate(layers):
             if i == 0:
                 x = Dense(l_size, kernel_initializer=self.initializer, name=f'{name}.fc{i+1}.{l_size}')(inputs)
             else:
                 x = Dense(l_size, kernel_initializer=self.initializer, name=f'{name}.fc{i+1}.{l_size}')(x)
-            x = BatchNormalization(name=f'{name}.bn{i+1}')(x)
+            
+            if batchnorm:
+                x = BatchNormalization(name=f'{name}.bn{i+1}')(x)
+                
             x = Activation('relu', name=f'{name}.a{i+1}')(x)
             x = Dropout(self.dr_rate, name=f'{name}.drp{i+1}.{self.dr_rate}')(x)        
         return x
+    
+    
+    def get_optimizer(self):
+        if self.opt_name == 'sgd':
+            opt = SGD(lr=self.lr, momentum=0.9) # lr=1e-4
+        elif self.opt_name == 'adam':
+            opt = Adam(lr=self.lr, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False) # lr=1e-3
+        else:
+            opt = SGD(lr=self.lr, momentum=0.9) # for clr # lr=1e-4
+        return opt
+
 
     
     
@@ -282,25 +301,27 @@ class NN_REG0(BaseMLModel):
     """
     model_name = 'nn_reg0'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
         self.initializer = initializer
+        self.lr = lr
 
         layers = [1000, 1000, 500, 250, 125, 60, 30]
         inputs = Input(shape=(self.input_dim,), name='inputs')
-        x = self.build_dense_block(layers, inputs)
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
 
         outputs = Dense(1, activation='relu', name='outputs')(x)
         model = Model(inputs=inputs, outputs=outputs)
         
-        if self.opt_name == 'sgd':
-            opt = SGD(lr=1e-4, momentum=0.9)
-        elif self.opt_name == 'adam':
-            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-        else:
-            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+        opt = self.get_optimizer()
+#         if self.opt_name == 'sgd':
+#             opt = SGD(lr=lr, momentum=0.9) # lr=1e-4
+#         elif self.opt_name == 'adam':
+#             opt = Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False) # lr=1e-3
+#         else:
+#             opt = SGD(lr=lr, momentum=0.9) # for clr # lr=1e-4
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model
@@ -313,26 +334,28 @@ class NN_REG1(BaseMLModel):
     """
     model_name = 'nn_reg1'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
         self.initializer = initializer
+        self.lr = lr
 
         # layers = [1000, 1000,  500, 250, 125, 60, 30]
         layers = [2000, 2000, 1000, 500, 250, 125, 60]
         inputs = Input(shape=(self.input_dim,), name='inputs')
-        x = self.build_dense_block(layers, inputs)
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
 
         outputs = Dense(1, activation='relu', name='outputs')(x)
         model = Model(inputs=inputs, outputs=outputs)
         
-        if self.opt_name == 'sgd':
-            opt = SGD(lr=1e-4, momentum=0.9)
-        elif self.opt_name == 'adam':
-            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-        else:
-            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+        opt = self.get_optimizer()
+#         if self.opt_name == 'sgd':
+#             opt = SGD(lr=1e-4, momentum=0.9)
+#         elif self.opt_name == 'adam':
+#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+#         else:
+#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model        
@@ -347,25 +370,27 @@ class NN_REG_ATTN(BaseMLModel):
     """
     model_name = 'nn_reg_attn'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
         self.initializer = initializer
+        self.lr = lr
 
         layers = [1000, 1000, 500, 250, 125, 60, 30]
         inputs = Input(shape=(self.input_dim,), name='inputs')
-        x = self.build_dense_block(layers, inputs)
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
 
         outputs = Dense(1, activation='relu', name='outputs')(x)
         model = Model(inputs=inputs, outputs=outputs)
         
-        if self.opt_name == 'sgd':
-            opt = SGD(lr=1e-4, momentum=0.9)
-        elif self.opt_name == 'adam':
-            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-        else:
-            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+        opt = self.get_optimizer()
+#         if self.opt_name == 'sgd':
+#             opt = SGD(lr=1e-4, momentum=0.9)
+#         elif self.opt_name == 'adam':
+#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+#         else:
+#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model        
@@ -379,25 +404,27 @@ class NN_REG_NEURON_LESS(BaseMLModel):
     """
     model_name = 'nn_reg_neuron_less'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
         self.initializer = initializer
+        self.lr = lr
 
         layers = [500, 250, 125, 60]
         inputs = Input(shape=(self.input_dim,), name='inputs')
-        x = self.build_dense_block(layers, inputs)
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
 
         outputs = Dense(1, activation='relu', name='outputs')(x)
         model = Model(inputs=inputs, outputs=outputs)
         
-        if self.opt_name == 'sgd':
-            opt = SGD(lr=1e-4, momentum=0.9)
-        elif self.opt_name == 'adam':
-            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-        else:
-            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+        opt = self.get_optimizer()
+#         if self.opt_name == 'sgd':
+#             opt = SGD(lr=1e-4, momentum=0.9)
+#         elif self.opt_name == 'adam':
+#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+#         else:
+#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model 
@@ -410,25 +437,27 @@ class NN_REG_NEURON_MORE(BaseMLModel):
     """
     model_name = 'nn_reg_neuron_more'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
         self.initializer = initializer
+        self.lr = lr
 
         layers = [1000, 500, 250, 125]
         inputs = Input(shape=(self.input_dim,), name='inputs')
-        x = self.build_dense_block(layers, inputs)
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
 
         outputs = Dense(1, activation='relu', name='outputs')(x)
         model = Model(inputs=inputs, outputs=outputs)
         
-        if self.opt_name == 'sgd':
-            opt = SGD(lr=1e-4, momentum=0.9)
-        elif self.opt_name == 'adam':
-            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-        else:
-            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+        opt = self.get_optimizer()
+#         if self.opt_name == 'sgd':
+#             opt = SGD(lr=1e-4, momentum=0.9)
+#         elif self.opt_name == 'adam':
+#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+#         else:
+#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model            
@@ -443,25 +472,27 @@ class NN_REG_LAYER_LESS(BaseMLModel):
     """
     model_name = 'nn_reg_layer_less'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
         self.initializer = initializer
+        self.lr = lr
 
         layers = [1000, 500]
         inputs = Input(shape=(self.input_dim,), name='inputs')
-        x = self.build_dense_block(layers, inputs)
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
 
         outputs = Dense(1, activation='relu', name='outputs')(x)
         model = Model(inputs=inputs, outputs=outputs)
         
-        if self.opt_name == 'sgd':
-            opt = SGD(lr=1e-4, momentum=0.9)
-        elif self.opt_name == 'adam':
-            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-        else:
-            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+        opt = self.get_optimizer()
+#         if self.opt_name == 'sgd':
+#             opt = SGD(lr=1e-4, momentum=0.9)
+#         elif self.opt_name == 'adam':
+#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+#         else:
+#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model 
@@ -473,25 +504,27 @@ class NN_REG_LAYER_MORE(BaseMLModel):
     """
     model_name = 'nn_reg_layer_more'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', initializer='he_uniform', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
         self.initializer = initializer
+        self.lr = lr
 
         layers = [1000, 500, 250, 125]
         inputs = Input(shape=(self.input_dim,), name='inputs')
-        x = self.build_dense_block(layers, inputs)
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
 
         outputs = Dense(1, activation='relu', name='outputs')(x)
         model = Model(inputs=inputs, outputs=outputs)
         
-        if self.opt_name == 'sgd':
-            opt = SGD(lr=1e-4, momentum=0.9)
-        elif self.opt_name == 'adam':
-            opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-        else:
-            opt = SGD(lr=1e-4, momentum=0.9) # for clr
+        opt = self.get_optimizer()
+#         if self.opt_name == 'sgd':
+#             opt = SGD(lr=1e-4, momentum=0.9)
+#         elif self.opt_name == 'adam':
+#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+#         else:
+#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
 
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model         

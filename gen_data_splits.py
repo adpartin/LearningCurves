@@ -38,6 +38,7 @@ filepath = Path(__file__).resolve().parent
 # Utils
 from classlogger import Logger
 from cv_splitter import cv_splitter, plot_ytr_yvl_dist
+from plotting import plot_hist
 
 
 def parse_args(args):
@@ -77,28 +78,28 @@ def dump_dict(dct, outpath='./dict.txt'):
             file.write('{}: {}\n'.format(k, dct[k]))
 
             
-def plot_hist(x, var_name, fit=None, bins=100, path='hist.png'):
-    """ Plot hist of a 1-D array x. """
-    if fit is not None:
-        (mu, sigma) = stats.norm.fit(x)
-        fit = stats.norm
-        label = f'norm fit: $\mu$={mu:.2f}, $\sigma$={sigma:.2f}'
-    else:
-        label = None
+# def plot_hist(x, var_name, fit=None, bins=100, path='hist.png'):
+#     """ Plot hist of a 1-D array x. """
+#     if fit is not None:
+#         (mu, sigma) = stats.norm.fit(x)
+#         fit = stats.norm
+#         label = f'norm fit: $\mu$={mu:.2f}, $\sigma$={sigma:.2f}'
+#     else:
+#         label = None
     
-    alpha = 0.6
-    fig, ax = plt.subplots()
-#     sns.distplot(x, bins=bins, kde=True, fit=fit, 
-#                  hist_kws={'linewidth': 2, 'alpha': alpha, 'color': 'b'},
-#                  kde_kws={'linewidth': 2, 'alpha': alpha, 'color': 'k'},
-#                  fit_kws={'linewidth': 2, 'alpha': alpha, 'color': 'r',
-#                           'label': label})
-    sns.distplot(x, bins=bins, kde=False, fit=fit, 
-                 hist_kws={'linewidth': 2, 'alpha': alpha, 'color': 'b'})
-    plt.grid(True)
-    if label is not None: plt.legend()
-    plt.title(var_name + ' hist')
-    plt.savefig(path, bbox_inches='tight')
+#     alpha = 0.6
+#     fig, ax = plt.subplots()
+# #     sns.distplot(x, bins=bins, kde=True, fit=fit, 
+# #                  hist_kws={'linewidth': 2, 'alpha': alpha, 'color': 'b'},
+# #                  kde_kws={'linewidth': 2, 'alpha': alpha, 'color': 'k'},
+# #                  fit_kws={'linewidth': 2, 'alpha': alpha, 'color': 'r',
+# #                           'label': label})
+#     sns.distplot(x, bins=bins, kde=False, fit=fit, 
+#                  hist_kws={'linewidth': 2, 'alpha': alpha, 'color': 'b'})
+#     plt.grid(True)
+#     if label is not None: plt.legend()
+#     plt.title(var_name + ' hist')
+#     plt.savefig(path, bbox_inches='tight')
 
     
 def cnt_fea(df, fea_sep='_', verbose=True, logger=None):

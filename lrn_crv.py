@@ -37,6 +37,7 @@ from scipy import optimize
 
 # Utils
 import ml_models
+from plotting import plot_hist
 
 
 # --------------------------------------------------------------------------------
@@ -283,14 +284,14 @@ class LearningCurve():
 
                 # Sequentially get a subset of samples (the input dataset X must be shuffled)
                 xtr_sub = xtr[idx[:tr_sz], :]
-                ytr_sub = np.squeeze(ytr[idx[:tr_sz], :])            
-
+                ytr_sub = np.squeeze(ytr[idx[:tr_sz], :])
+                
                 # Get the estimator
                 estimator = ml_models.get_model(self.model_name, init_kwargs=self.init_kwargs)
                 model = estimator.model
                 
                 # HPO
-                # TODO: best HP should be used
+                # TODO: load best HPs
                 pass
                 
                 # Train
@@ -309,6 +310,9 @@ class LearningCurve():
                 else:
                     raise ValueError(f'Framework {self.framework} is not supported.')
 
+                # Save plot of target distribution
+                plot_hist(ytr_sub, var_name=f'Target (tr size={tr_sz})', fit=None, bins=100, path=trn_outdir/'target_hist.png')
+                    
                 # Calc preds and scores TODO: dump preds
                 # ... training set
                 y_pred, y_true = calc_preds(model, x=xtr_sub, y=ytr_sub, mltype=self.mltype)

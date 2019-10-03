@@ -74,8 +74,11 @@ def parse_args(args):
     parser.add_argument('--dr_rate', default=0.2, type=float, help='Dropout rate (default: 0.2).')
     parser.add_argument('-sc', '--scaler', default='stnd', type=str, choices=['stnd', 'minmax', 'rbst'],
             help='Feature normalization method (stnd, minmax, rbst) (default: stnd).')
+    parser.add_argument('--batchnorm', action='store_true', help='Whether to use batch normalization (default: False).')
+    # parser.add_argument('--initializer', default='he', type=str, choices=['he', 'glorot'], help='Keras initializer name (default: he).')
 
     parser.add_argument('--opt', default='sgd', type=str, choices=['sgd', 'adam'], help='Optimizer name (default: sgd).')
+    parser.add_argument('--lr', default='0.001', type=float, help='Learning rate of adaptive optimizers (default: 0.001).')
 
     parser.add_argument('--clr_mode', default=None, type=str, choices=['trng1', 'trng2', 'exp'], help='CLR mode (default: trng1).')
     parser.add_argument('--clr_base_lr', type=float, default=1e-4, help='Base lr for cycle lr.')
@@ -174,9 +177,11 @@ def run(args):
     epochs = args['epochs']
     batch_size = args['batch_size']
     dr_rate = args['dr_rate']
+    batchnorm = args['batchnorm']
 
     # Optimizer
     opt_name = args['opt']
+    lr = args['lr']
     clr_keras_kwargs = {'mode': args['clr_mode'], 'base_lr': args['clr_base_lr'],
                         'max_lr': args['clr_max_lr'], 'gamma': args['clr_gamma']}
 
@@ -257,7 +262,7 @@ def run(args):
         fit_kwargs = {}
     elif model_name == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':
         framework = 'keras'
-        init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': dr_rate, 'opt_name': opt_name, 'logger': lg.logger}
+        init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': dr_rate, 'opt_name': opt_name, 'lr': lr, 'batchnorm': batchnorm, 'logger': lg.logger}
         fit_kwargs = {'batch_size': batch_size, 'epochs': epochs, 'verbose': 1}  # 'validation_split': 0.1
 
 
