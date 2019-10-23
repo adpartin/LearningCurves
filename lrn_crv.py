@@ -57,7 +57,7 @@ class LearningCurve():
             shard_step_scale: str='log2',
             min_shard = 0,
             max_shard = None,
-            n_shards: int=5,
+            n_shards: int=None,
             shards_arr: list=[],
             args=None,
             logger=None,
@@ -163,7 +163,7 @@ class LearningCurve():
 
 
     def create_tr_shards_list(self):
-        """ Generate the list of training shards (training sizes). """
+        """ Generate a list of training shards (training sizes). """
         if self.shards_arr is not None:
             self.tr_shards = self.shards_arr
             
@@ -324,6 +324,11 @@ class LearningCurve():
                 del estimator, model
                 # nm = ((y_true - y_pred) ** 2).sum(axis=0, dtype=np.float64)
                 # dn = ((y_true - np.average(y_true, axis=0)) ** 2).sum(axis=0, dtype=np.float64)
+                
+                # Save predictions
+                # TODO
+                pass
+                
 
                 # Store runtime
                 runtime_records.append((fold, tr_sz, runtime))

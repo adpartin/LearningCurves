@@ -90,7 +90,7 @@ def parse_args(args):
             help='Scale of progressive sampling of shards (log2, log, log10, linear) (default: log2).')
     parser.add_argument('--min_shard', default=128, type=int, help='The lower bound for the shard sizes (default: 128).')
     parser.add_argument('--max_shard', default=None, type=int, help='The upper bound for the shard sizes (default: None).')
-    parser.add_argument('--n_shards', default=5, type=int, help='Number of shards (used only when shard_step_scale is `linear` (default: 7).')
+    parser.add_argument('--n_shards', default=None, type=int, help='Number of shards (used only when shard_step_scale is `linear` (default: None).')
     parser.add_argument('--shards_arr', nargs='+', type=int, default=None, help='List of the actual shards in the learning curve plot (default: None).')
     
     # Define n_jobs
