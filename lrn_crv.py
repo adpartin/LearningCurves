@@ -24,6 +24,9 @@ from sklearn.model_selection import ShuffleSplit, KFold
 from sklearn.model_selection import GroupShuffleSplit, GroupKFold
 from sklearn.model_selection import StratifiedShuffleSplit, StratifiedKFold
 
+from sklearn import metrics
+from math import sqrt
+
 from pandas.api.types import is_string_dtype
 from sklearn.preprocessing import LabelEncoder
 from sklearn.externals import joblib
@@ -52,7 +55,7 @@ class LearningCurve():
     def __init__(self,
             X, Y,
             cv=5,
-            cv_lists=None,  # (tr_id, vl_id)
+            cv_lists=None,  # (tr_id, vl_id, te_id)
             cv_folds_arr=None,
             shard_step_scale: str='log2',
             min_shard = 0,
@@ -67,7 +70,8 @@ class LearningCurve():
             X : array-like (pd.DataFrame or np.ndarray)
             Y : array-like (pd.DataFrame or np.ndarray)
             cv : (optional) number of cv folds (int) or sklearn cv splitter --> scikit-learn.org/stable/glossary.html#term-cv-splitter
-            cv_lists : tuple of 2 dicts, cv_lists[0] and cv_lists[1], that contain the tr and vl folds, respectively
+            # cv_lists : tuple of 2 dicts, cv_lists[0] and cv_lists[1], that contain the tr and vl folds, respectively
+            cv_lists : tuple of 3 dicts, cv_lists[0] and cv_lists[1], cv_lists[2], that contain the tr, vl, and te folds, respectively
             cv_folds_arr : list that contains the specific folds in the cross-val run
 
             shard_step_scale : specifies how to generate the shard values. 
@@ -106,25 +110,24 @@ class LearningCurve():
 
         
     def create_fold_dcts(self):
-        """ Converts a tuple of arrays self.cv_lists into two dicts, tr_dct and vl_dct.
+        """ Converts a tuple of arrays self.cv_lists into two dicts, tr_dct, vl_dct, and te_dict.
         Both sets of data structures contain the splits of all the k-folds. """
         tr_dct = {}
         vl_dct = {}
+        te_dct = {}
 
         # Use lists passed as input arg
         if self.cv_lists is not None:
             tr_id = self.cv_lists[0]
             vl_id = self.cv_lists[1]
-            assert tr_id.shape[1] == vl_id.shape[1], 'tr and vl must have the same number of folds.'
+            te_id = self.cv_lists[2]
+            assert (tr_id.shape[1]==vl_id.shape[1]) and (tr_id.shape[1]==te_id.shape[1]), 'tr, vl, and te must have the same number of folds.'
             self.cv_folds = tr_id.shape[1]
 
             # Calc the split ratio if cv=1
             if self.cv_folds == 1:
-                self.vl_size = vl_id.shape[0]/(vl_id.shape[0] + tr_id.shape[0])
-
-#             for fold in range(tr_id.shape[1]):
-#                 tr_dct[fold] = tr_id.iloc[:, fold].dropna().values.astype(int).tolist()
-#                 vl_dct[fold] = vl_id.iloc[:, fold].dropna().values.astype(int).tolist()
+                self.vl_size = vl_id.shape[0]/(tr_id.shape[0] + vl_id.shape[0] + te_id.shape[0])
+                self.te_size = te_id.shape[0]/(tr_id.shape[0] + vl_id.shape[0] + te_id.shape[0])
 
             if self.cv_folds_arr is None: self.cv_folds_arr = [f+1 for f in range(self.cv_folds)]
                 
@@ -132,9 +135,11 @@ class LearningCurve():
                 if fold+1 in self.cv_folds_arr:
                     tr_dct[fold] = tr_id.iloc[:, fold].dropna().values.astype(int).tolist()
                     vl_dct[fold] = vl_id.iloc[:, fold].dropna().values.astype(int).tolist()
+                    te_dct[fold] = te_id.iloc[:, fold].dropna().values.astype(int).tolist()
                 
 
         # Generate folds on the fly if no pre-defined folds were passed
+        # TODO: this option won't work after we added test set in addition to train and val sets.
         else:
             if isinstance(self.cv, int):
                 self.cv_folds = self.cv
@@ -158,28 +163,34 @@ class LearningCurve():
                 tr_dct[fold] = tr_vec
                 vl_dct[fold] = vl_vec
 
+        # Keep dicts
         self.tr_dct = tr_dct
         self.vl_dct = vl_dct
+        self.te_dct = te_dct
 
 
     def create_tr_shards_list(self):
         """ Generate a list of training shards (training sizes). """
         if self.shards_arr is not None:
+            # No need to generate an array of training shards if shards_arr is specified
             self.tr_shards = self.shards_arr
             
         else:
             # Fixed spacing
             if self.max_shard is None:
-                if self.cv_folds == 1:
-                    self.max_shard = int( (1-self.vl_size) * self.X.shape[0] )
-                else: 
-                    self.max_shard = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
+                self.max_shard = len(self.tr_dct[0])
+                # if self.cv_folds == 1:
+                #     self.max_shard = int( (1 - self.vl_size - self.te_size) * self.X.shape[0] )
+                # else: 
+                #     self.max_shard = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
 
             # Full vector of shards
+            # (we create a vector with very large values so that we later truncate it with max_shard)
             scale = self.shard_step_scale.lower()
             if scale == 'linear':
                 m = np.linspace(0, self.max_shard, self.n_shards+1)[1:]
             else:
+                # we create very large vector m, so that we later truncate it with max_shard
                 if scale == 'log2':
                     m = 2 ** np.array(np.arange(30))[1:]
                 elif scale == 'log':
@@ -191,11 +202,9 @@ class LearningCurve():
 
             # Set min shard
             idx_min = np.argmin( np.abs( m - self.min_shard ) )
-            # if m[idx_min] > self.min_shard and idx_min > 0:     m = m[idx_min-1:]
-            # elif m[idx_min] > self.min_shard and idx_min == 0:  m = np.concatenate( (np.array([self.min_shard]), m) )
             if m[idx_min] > self.min_shard:
-                m = m[idx_min:]
-                m = np.concatenate( (np.array([self.min_shard]), m) )
+                m = m[idx_min:]  # all values larger than min_shard
+                m = np.concatenate( (np.array([self.min_shard]), m) )  # preceed arr with specified min_shard
             else:
                 m = m[idx_min:]
 
@@ -208,9 +217,8 @@ class LearningCurve():
                 m = list(m[:idx_max+1])  # all values INcluding the last one
                 m.append(self.max_shard) # TODO: should this be also added??
                 # If the diff btw max_samples and the latest shards (m[-1] - m[-2]) is "too small", then remove max_samples from the possible shards.
-                if 0.5*m[-3] > (m[-1] - m[-2]): m = m[:-1]
+                if 0.5*m[-3] > (m[-1] - m[-2]): m = m[:-1] # heuristic to drop the last shard
 
-            # self.tr_shards = m[:-self.n_shards]
             self.tr_shards = m
         # --------------------------------------------
         
@@ -250,26 +258,33 @@ class LearningCurve():
         # Start nested loop of train size and cv folds
         tr_scores_all = [] # list of dicts
         vl_scores_all = [] # list of dicts
+        te_scores_all = [] # list of dicts
 
         # Record runtime per shard
         runtime_records = []
 
         # CV loop
-        for fold, (tr_k, vl_k) in enumerate(zip( self.tr_dct.keys(), self.vl_dct.keys() )):
+        for fold, (tr_k, vl_k, te_k) in enumerate(zip( self.tr_dct.keys(), self.vl_dct.keys(), self.te_dct.keys() )):
             fold = fold + 1
             if self.logger is not None: self.logger.info(f'Fold {fold}/{self.cv_folds}')
 
             # Get the indices for this fold
             tr_id = self.tr_dct[tr_k]
             vl_id = self.vl_dct[vl_k]
+            te_id = self.te_dct[te_k]
 
             # Samples from this dataset are randomly sampled for training
             xtr = self.X[tr_id, :]
-            ytr = self.Y[tr_id, :]
+            # ytr = self.Y[tr_id, :]
+            ytr = np.squeeze(self.Y[tr_id, :])        
 
-            # A fixed set of validation samples for the current CV split
+            # A fixed set of val samples for the current CV split
             xvl = self.X[vl_id, :]
             yvl = np.squeeze(self.Y[vl_id, :])        
+
+            # A fixed set of test samples for the current CV split
+            xte = self.X[te_id, :]
+            yte = np.squeeze(self.Y[te_id, :])        
 
             # Shards loop (iterate across the dataset sizes and train)
             """
@@ -284,21 +299,19 @@ class LearningCurve():
 
                 # Sequentially get a subset of samples (the input dataset X must be shuffled)
                 xtr_sub = xtr[idx[:tr_sz], :]
-                ytr_sub = np.squeeze(ytr[idx[:tr_sz], :])
+                # ytr_sub = np.squeeze(ytr[idx[:tr_sz], :])
+                ytr_sub = ytr[idx[:tr_sz]]
                 
                 # Get the estimator
                 estimator = ml_models.get_model(self.model_name, init_kwargs=self.init_kwargs)
                 model = estimator.model
                 
-                # HPO
-                # TODO: load best HPs
-                pass
-                
                 # Train
                 # self.val_split = 0 # 0.1 # used for early stopping
-                self.eval_frac = 0.1 # 0.1 # used for early stopping
-                eval_samples = int(self.eval_frac * xvl.shape[0])
-                eval_set = (xvl[:eval_samples, :], yvl[:eval_samples]) # we don't random sample; the same eval_set is used for early stopping
+                #self.eval_frac = 0.1 # 0.1 # used for early stopping
+                #eval_samples = int(self.eval_frac * xvl.shape[0])
+                #eval_set = (xvl[:eval_samples, :], yvl[:eval_samples]) # we don't random sample; the same eval_set is used for early stopping
+                eval_set = (xvl, yvl)
                 if self.framework=='lightgbm':
                     model, trn_outdir, runtime = self.trn_lgbm_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
                 elif self.framework=='sklearn':
@@ -311,62 +324,74 @@ class LearningCurve():
                     raise ValueError(f'Framework {self.framework} is not supported.')
 
                 # Save plot of target distribution
-                plot_hist(ytr_sub, var_name=f'Target (tr size={tr_sz})', fit=None, bins=100, path=trn_outdir/'target_hist.png')
+                plot_hist(ytr_sub, var_name=f'Target (Train size={tr_sz})', fit=None, bins=100, path=trn_outdir/'target_hist_tr.png')
+                plot_hist(yvl, var_name=f'Target (Val size={len(yvl)})', fit=None, bins=100, path=trn_outdir/'target_hist_vl.png')
+                plot_hist(yte, var_name=f'Target (Test size={len(yte)})', fit=None, bins=100, path=trn_outdir/'target_hist_te.png')
                     
                 # Calc preds and scores TODO: dump preds
                 # ... training set
                 y_pred, y_true = calc_preds(model, x=xtr_sub, y=ytr_sub, mltype=self.mltype)
                 tr_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
+                tr_scores['y_avg'] = np.mean(y_pred)
                 # ... val set
                 y_pred, y_true = calc_preds(model, x=xvl, y=yvl, mltype=self.mltype)
                 vl_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
+                vl_scores['y_avg'] = np.mean(y_pred)
+                # ... test set
+                y_pred, y_true = calc_preds(model, x=xte, y=yte, mltype=self.mltype)
+                te_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
+                te_scores['y_avg'] = np.mean(y_pred)
 
                 del estimator, model
-                # nm = ((y_true - y_pred) ** 2).sum(axis=0, dtype=np.float64)
-                # dn = ((y_true - np.average(y_true, axis=0)) ** 2).sum(axis=0, dtype=np.float64)
                 
-                # Save predictions
+                # Save predictions (need to include metadata)
                 # TODO
                 pass
-                
 
                 # Store runtime
                 runtime_records.append((fold, tr_sz, runtime))
 
                 # Add metadata
-                tr_scores['tr_set'] = True
+                # tr_scores['tr_set'] = True
+                tr_scores['set'] = 'tr'
                 tr_scores['fold'] = 'fold'+str(fold)
                 tr_scores['tr_size'] = tr_sz
                 
-                vl_scores['tr_set'] = False
+                # vl_scores['tr_set'] = False
+                vl_scores['set'] = 'vl'
                 vl_scores['fold'] = 'fold'+str(fold)
                 vl_scores['tr_size'] = tr_sz
+
+                # te_scores['tr_set'] = False
+                te_scores['set'] = 'te'
+                te_scores['fold'] = 'fold'+str(fold)
+                te_scores['tr_size'] = tr_sz
 
                 # Append scores (dicts)
                 tr_scores_all.append(tr_scores)
                 vl_scores_all.append(vl_scores)
+                te_scores_all.append(te_scores)
 
                 # Dump intermediate scores
                 # TODO: test this!
-                # scores_tmp = pd.concat([scores_to_df(tr_scores_all), scores_to_df(vl_scores_all)], axis=0)
-                scores_tmp = pd.concat([scores_to_df([tr_scores]), scores_to_df([vl_scores])], axis=0)
+                scores_tmp = pd.concat([scores_to_df([tr_scores]), scores_to_df([vl_scores]), scores_to_df([te_scores])], axis=0)
                 scores_tmp.to_csv( trn_outdir / ('scores_tmp.csv'), index=False )
                 del trn_outdir, scores_tmp
                 
             # Dump intermediate results (this is useful if the run terminates before run ends)
-            # tr_df_tmp = scores_to_df(tr_scores_all)
-            # vl_df_tmp = scores_to_df(vl_scores_all)
-            scores_all_df_tmp = pd.concat([scores_to_df(tr_scores_all), scores_to_df(vl_scores_all)], axis=0)
+            scores_all_df_tmp = pd.concat([scores_to_df(tr_scores_all), scores_to_df(vl_scores_all), scores_to_df(te_scores_all)], axis=0)
             scores_all_df_tmp.to_csv( self.outdir / ('_lrn_crv_scores_cv' + str(fold) + '.csv'), index=False )
 
         # Scores to df
         tr_scores_df = scores_to_df( tr_scores_all )
         vl_scores_df = scores_to_df( vl_scores_all )
-        scores_df = pd.concat([tr_scores_df, vl_scores_df], axis=0)
+        te_scores_df = scores_to_df( te_scores_all )
+        scores_df = pd.concat([tr_scores_df, vl_scores_df, te_scores_df], axis=0)
         
         # Dump final results
         tr_scores_df.to_csv( self.outdir/'tr_lrn_crv_scores.csv', index=False) 
         vl_scores_df.to_csv( self.outdir/'vl_lrn_crv_scores.csv', index=False) 
+        te_scores_df.to_csv( self.outdir/'te_lrn_crv_scores.csv', index=False) 
         scores_df.to_csv( self.outdir/'lrn_crv_scores.csv', index=False) 
 
         # Runtime df
@@ -377,7 +402,7 @@ class LearningCurve():
         if plot:
             plot_lrn_crv_all_metrics( scores_df, outdir=self.outdir )
             plot_lrn_crv_all_metrics( scores_df, outdir=self.outdir, xtick_scale='log2', ytick_scale='log2' )
-            plot_runtime( runtime_df, outdir=self.outdir )
+            plot_runtime( runtime_df, outdir=self.outdir, xtick_scale='log2', ytick_scale='log2' )
 
         return scores_df
 
@@ -482,7 +507,7 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
     of results is used in sklearn's learning_curve() function, and thus, we used the same format here.
     Args:
         df : contains train and val scores for cv folds (the scores are the last cv_folds cols)
-            metric | tr_set | tr_size |  fold0  |  fold1  |  fold2  |  fold3  |  fold4
+            metric |  set   | tr_size |  fold0  |  fold1  |  fold2  |  fold3  |  fold4
           ------------------------------------------------------------------------------
               r2   |  True  |   200   |   0.95  |   0.98  |   0.97  |   0.91  |   0.92
               r2   |  False |   200   |   0.21  |   0.27  |   0.22  |   0.25  |   0.24
@@ -503,20 +528,23 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
         aa = df[df['metric']==metric_name].reset_index(drop=True)
         aa.sort_values('tr_size', inplace=True)
 
-        tr = aa[aa['tr_set']==True]
-        vl = aa[aa['tr_set']==False]
-        # tr = aa[aa['phase']=='train']
-        # vl = aa[aa['phase']=='val']
+        # tr = aa[aa['tr_set']==True]
+        # vl = aa[aa['tr_set']==False]
+        tr = aa[aa['set']=='tr']
+        # vl = aa[aa['set']=='vl']
+        te = aa[aa['set']=='te']
 
         tr = tr[[c for c in tr.columns if 'fold' in c]]
-        vl = vl[[c for c in vl.columns if 'fold' in c]]
+        # vl = vl[[c for c in vl.columns if 'fold' in c]]
+        te = te[[c for c in te.columns if 'fold' in c]]
         # tr = tr.iloc[:, -cv_folds:]
         # vl = vl.iloc[:, -cv_folds:]
 
         rslt = []
         rslt.append(tr_shards)
         rslt.append(tr.values if tr.values.shape[0]>0 else None)
-        rslt.append(vl.values if vl.values.shape[0]>0 else None)
+        # rslt.append(vl.values if vl.values.shape[0]>0 else None)
+        rslt.append(te.values if te.values.shape[0]>0 else None)
 
         if xtick_scale != 'linear' or ytick_scale != 'linear':
             fname = 'lrn_crv_' + metric_name + '_log.png'
@@ -555,15 +583,16 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
                  xlim:list=None, ylim:list=None, title:str=None, path:Path=None,
                  figsize=(7,5), ax=None):
     """ 
+    Plot learning curves for training and test sets.
     Args:
         rslt : output from sklearn.model_selection.learning_curve()
             rslt[0] : 1-D array (n_ticks, ) -> vector of train set sizes
             rslt[1] : 2-D array (n_ticks, n_cv_folds) -> tr scores
-            rslt[2] : 2-D array (n_ticks, n_cv_folds) -> vl scores
+            rslt[2] : 2-D array (n_ticks, n_cv_folds) -> te scores
     """
     tr_shards = rslt[0]
     tr_scores = rslt[1]
-    vl_scores = rslt[2]
+    te_scores = rslt[2]
     
     def plot_single_crv(tr_shards, scores, ax, phase, color=None):
         scores_mean = np.mean(scores, axis=1)
@@ -577,8 +606,9 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
         
     if tr_scores is not None:
         plot_single_crv(tr_shards, scores=tr_scores, ax=ax, color='b', phase='Train')
-    if vl_scores is not None:
-        plot_single_crv(tr_shards, scores=vl_scores, ax=ax, color='g', phase='Val')
+    if te_scores is not None:
+        # plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', phase='Val')
+        plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', phase='Test')
 
     # Set axes scale and labels
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
@@ -631,9 +661,9 @@ def fit_power_law_3prm(x, y, p0:list=[30, -0.3, 0.06]):
 def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
                            xtick_scale:str='log2', ytick_scale:str='log2',
                            xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
-                           label:str=None, ax=None):
+                           label:str='Data', ax=None):
     
-    """ This function takes the train set size in x and performance in y, and generates a learning curve plot.
+    """ This function takes train set size in x and score in y, and generates a learning curve plot.
     The power-law model is fitted to the learning curve data.
     Args:
         ax : ax handle from existing plot (this allows to plot results from different runs for comparison)
@@ -642,19 +672,128 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     x = x.ravel()
     y = y.ravel()
     
-    fontsize = 13
-    if ax is None: fig, ax = plt.subplots(figsize=figsize)
-    
-    # Plot raw data
-    if label is None: label='data'
-    ax.plot(x, y, '.-', color=None, label=label);
-
     # Fit power-law (3 params)
     power_law_params = fit_power_law_3prm(x, y)
     yfit = power_law_func_3prm(x, **power_law_params)
     
+    # Compute goodness-of-fit
+    # R2 is not valid for non-linear models
+    # https://statisticsbyjim.com/regression/standard-error-regression-vs-r-squared/
+    # http://tuvalu.santafe.edu/~aaronc/powerlaws/
+    # https://stats.stackexchange.com/questions/3242/how-to-measure-argue-the-goodness-of-fit-of-a-trendline-to-a-power-law
+    # https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0170920&type=printable
+    # https://www.mathworks.com/help/curvefit/evaluating-goodness-of-fit.html --> based on this we should use SSE or RMSE
+    rmse = sqrt( metrics.mean_squared_error(y, yfit) )
+
+    # Init figure
+    fontsize = 13
+    if ax is None: fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot raw data
+    # ax.plot(x, y, '.-', color=None, label=label);
+    ax.plot(x, y, '.', color=None, label=label);
+
     # Plot fit
-    if plot_fit: ax.plot(x, yfit, '--', color=None, label=f'{label} Trend');    
+    if plot_fit: ax.plot(x, yfit, '--', color=None, label=f'{label} fit (RMSE: {rmse:.7f})');    
+        
+    basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
+    basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
+    
+    ax.set_xlabel(f'Training Dataset Size ({xlabel_scale})', fontsize=fontsize)
+    if 'log' in xlabel_scale.lower(): ax.set_xscale('log', basex=basex)
+
+    ylabel = capitalize_metric(metric_name)
+    ax.set_ylabel(f'{ylabel} ({ylabel_scale})', fontsize=fontsize)
+    if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)        
+        
+    # ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    # ax.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    
+    # Add equation (text) on the plot
+    # matplotlib.org/3.1.1/gallery/text_labels_and_annotations/usetex_demo.html#sphx-glr-gallery-text-labels-and-annotations-usetex-demo-py
+    # eq = r"$\varepsilon_{mae}(m) = \alpha m^{\beta} + \gamma$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}, $\gamma$={power_law_params['gamma']:.2f}"
+    # eq = rf"$\varepsilon(m) = {power_law_params['alpha']:.2f} m^{power_law_params['beta']:.2f} + {power_law_params['gamma']:.2f}$" # TODO: make this work    
+    
+    eq = r"$\varepsilon(m) = \alpha m^{\beta}$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}"
+    # xloc = 2.0 * x.min()
+    xloc = x.min() + 0.01*(x.max() - x.min())
+    yloc = y.min() + 0.9*(y.max() - y.min())
+    ax.text(xloc, yloc, eq,
+            {'color': 'black', 'fontsize': fontsize, 'ha': 'left', 'va': 'center',
+             'bbox': {'boxstyle':'round', 'fc':'white', 'ec':'black', 'pad':0.2}})    
+
+    # matplotlib.org/users/mathtext.html
+    # ax.set_title(r"$\varepsilon_{mae}(m) = \alpha m^{\beta} + \gamma$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}, $\gamma$={power_law_params['gamma']:.2f}");
+    if ylim is not None: ax.set_ylim(ylim)
+    if xlim is not None: ax.set_ylim(xlim)
+    if title is None: title='Learning curve (power-law)'
+    ax.set_title(title)
+    
+    # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
+    ax.legend(frameon=True, fontsize=fontsize, bbox_to_anchor=(1.04, 1), loc='upper left')
+    ax.grid(True)
+    # return fig, ax, power_law_params
+    return ax, power_law_params
+
+
+
+def lrn_crv_power_law_extrapolate(x, y, m0:int, 
+        plot_fit:bool=True, metric_name:str='score',
+        xtick_scale:str='log2', ytick_scale:str='log2',
+        xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
+        label:str='Data', ax=None):
+    
+    """ This function takes train set size in x and score in y, and generates a learning curve plot.
+    The power-law model is fitted to the learning curve data.
+    Args:
+        m0 : the number of shards to use for curve fitting (iterpolation)
+        ax : ax handle from existing plot (this allows to plot results from different runs for comparison)
+        pwr_law_params : power-law model parameters after fitting
+    """
+    x = x.ravel()
+    y = y.ravel()
+    
+    # Data for curve fitting (interpolation)
+    x_it = x[:m0]
+    y_it = y[:m0]
+
+    # Data for extapolation (check how well the fitted curve fits the unseen future data)
+    x_et = x[m0:]
+    y_et = y[m0:]
+
+    # Fit power-law (3 params)
+    power_law_params = fit_power_law_3prm(x_it, y_it)
+
+    # Plot fit for the entire available range
+    y_it_fit = power_law_func_3prm(x_it, **power_law_params)
+    y_et_fit = power_law_func_3prm(x_et, **power_law_params)
+    y_fit = power_law_func_3prm(x, **power_law_params)
+
+    # Compute goodness-of-fit
+    # R2 is not valid for non-linear models
+    # https://statisticsbyjim.com/regression/standard-error-regression-vs-r-squared/
+    # http://tuvalu.santafe.edu/~aaronc/powerlaws/
+    # https://stats.stackexchange.com/questions/3242/how-to-measure-argue-the-goodness-of-fit-of-a-trendline-to-a-power-law
+    # https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0170920&type=printable
+    # https://www.mathworks.com/help/curvefit/evaluating-goodness-of-fit.html --> based on this we should use SSE or RMSE
+    #rmse_it = sqrt( metrics.mean_squared_error(y_it, y_it_fit) )
+    #rmse_et = sqrt( metrics.mean_squared_error(y_et, y_et_fit) )
+    mae_it = metrics.mean_absolute_error(y_it, y_it_fit )
+    mae_et = metrics.mean_absolute_error(y_et, y_et_fit )
+    
+    # Init figure
+    fontsize = 13
+    if ax is None: fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot raw data
+    # ax.plot(x, y, '.', color=None, label=label);
+    ax.plot(x_it, y_it, '.', color=None, label=f'{label} for interpolation');
+    ax.plot(x_et, y_et, 'o', color=None, label=f'{label} for extrapolation');
+
+    # Plot fit
+    if plot_fit: ax.plot(x, y_fit, '--', color=None, label=f'{label} Fit'); 
+    if plot_fit: ax.plot(x_it, y_it_fit, '--', color=None, label=f'{label} interpolation (MAE {mae_it:.7f})');
+    if plot_fit: ax.plot(x_et, y_et_fit, '--', color=None, label=f'{label} extrapolation (MAE {mae_et:.7f})');
         
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
     basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
@@ -698,17 +837,28 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
 
 
 
-def plot_runtime(rt:pd.DataFrame, outdir:Path=None, figsize=(7,5)):
+def plot_runtime(rt:pd.DataFrame, outdir:Path=None, figsize=(7,5),
+        xtick_scale:str='linear', ytick_scale:str='linear'):
     """ Plot training time vs shard size. """
     fontsize = 13
     fig, ax = plt.subplots(figsize=figsize)
     for f in rt['fold'].unique():
         d = rt[rt['fold']==f]
-        ax.plot(d['tr_sz'], d['time'], 'o--', label='fold'+str(f))
-        
+        ax.plot(d['tr_sz'], d['time'], '.--', label='fold'+str(f))
+       
+    # Set axes scale and labels
+    basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
+    basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
+
+    ax.set_xlabel(f'Train Dataset Size ({xlabel_scale})', fontsize=fontsize)
+    if 'log' in xlabel_scale.lower(): ax.set_xscale('log', basex=basex)
+
+    ax.set_ylabel(f'Training Time (minutes) ({ylabel_scale})', fontsize=fontsize)
+    if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)
+
     ax.set_title('Runtime')
-    ax.set_xlabel(f'Training Size', fontsize=fontsize)
-    ax.set_ylabel(f'Training Time (minutes)', fontsize=fontsize)
+    #ax.set_xlabel(f'Training Size', fontsize=fontsize)
+    #ax.set_ylabel(f'Training Time (minutes)', fontsize=fontsize)
     ax.legend(loc='best', frameon=True, fontsize=fontsize)
     ax.grid(True)
 
@@ -769,7 +919,9 @@ def calc_scores(y_true, y_pred, mltype, metrics=None):
         scores['r2'] = sklearn.metrics.r2_score(y_true=y_true, y_pred=y_pred)
         scores['mean_absolute_error'] = sklearn.metrics.mean_absolute_error(y_true=y_true, y_pred=y_pred)
         scores['median_absolute_error'] = sklearn.metrics.median_absolute_error(y_true=y_true, y_pred=y_pred)
-        scores['mean_squared_error'] = sklearn.metrics.mean_squared_error(y_true=y_true, y_pred=y_pred)
+        # scores['mean_squared_error'] = sklearn.metrics.mean_squared_error(y_true=y_true, y_pred=y_pred)
+        scores['mse'] = sklearn.metrics.mean_squared_error(y_true=y_true, y_pred=y_pred)
+        scores['rmse'] = sqrt( sklearn.metrics.mean_squared_error(y_true=y_true, y_pred=y_pred) )
         # scores['auroc_reg'] = reg_auroc(y_true=y_true, y_pred=y_pred)
 
     # # https://scikit-learn.org/stable/modules/model_evaluation.html
@@ -785,9 +937,11 @@ def calc_scores(y_true, y_pred, mltype, metrics=None):
 def scores_to_df(scores_all):
     """ (tricky commands) """
     df = pd.DataFrame(scores_all)
-    df = df.melt(id_vars=['fold', 'tr_size', 'tr_set'])
+    # df = df.melt(id_vars=['fold', 'tr_size', 'tr_set'])
+    df = df.melt(id_vars=['fold', 'tr_size', 'set'])
     df = df.rename(columns={'variable': 'metric'})
-    df = df.pivot_table(index=['metric', 'tr_size', 'tr_set'], columns=['fold'], values='value')
+    # df = df.pivot_table(index=['metric', 'tr_size', 'tr_set'], columns=['fold'], values='value')
+    df = df.pivot_table(index=['metric', 'tr_size', 'set'], columns=['fold'], values='value')
     df = df.reset_index(drop=False)
     df.columns.name = None
     return df

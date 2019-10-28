@@ -48,7 +48,10 @@ def cv_splitter(cv_method: str='simple', cv_folds: int=1, test_size: float=0.2,
         # Regression
         if cv_method == 'group':
             if cv_folds == 1:
-                cv = GroupShuffleSplit(n_splits=cv_folds, random_state=random_state)
+                raise ValueError('GroupShuffleSplit splits groups based on group count and not based on sample count.')
+                # https://github.com/scikit-learn/scikit-learn/issues/13369
+                # https://github.com/scikit-learn/scikit-learn/issues/9193
+                cv = GroupShuffleSplit(n_splits=cv_folds, test_size=test_size, random_state=random_state)
             else:
                 cv = GroupKFold(n_splits=cv_folds)
             

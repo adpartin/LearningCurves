@@ -1,6 +1,11 @@
 """ 
 This code generates CV splits and/or train/test splits of a dataset.
 TODO: Add plots of the splits (e.g. drug, cell line, reponse distributions).
+TODO: Hard split doesn't work as intended due to weird funcionality of sklearn.model_selection.GroupShuffleSplit.
+      This sklearn function splits groups based on group count and not based on sample count.
+      Consider to look into that function and modify it.
+      # https://github.com/scikit-learn/scikit-learn/issues/13369
+      # https://github.com/scikit-learn/scikit-learn/issues/9193
 """
 from __future__ import print_function, division
 
@@ -52,10 +57,12 @@ def parse_args(args):
     parser.add_argument('-df', '--drug_fea', nargs='+', default=['DD'], choices=['DD'], help='Drug features (default: DD).')    
 
     # Data split methods
-    parser.add_argument('--te_method', default='simple', choices=['simple', 'group'], help='Test split method (default: None).')
-    parser.add_argument('--te_size', type=float, default=0.1, help='Test size split ratio (default: 0.1).')
-    parser.add_argument('--cv_method', default='simple', choices=['simple', 'group'], help='Cross-val split method (default: simple).')
+    # parser.add_argument('--te_method', default='simple', choices=['simple', 'group'], help='Test split method (default: None).')
+    # parser.add_argument('--cv_method', default='simple', choices=['simple', 'group'], help='Cross-val split method (default: simple).')
+    # parser.add_argument('--te_size', type=float, default=0.1, help='Test size split ratio (default: 0.1).')
     parser.add_argument('--vl_size', type=float, default=0.1, help='Val size split ratio for single split (default: 0.1).')
+
+    parser.add_argument('--split_on', type=str, default=None, choices=[], help='Specify how to make a hard split. (default: None).')
 
     # Define n_jobs
     parser.add_argument('--n_jobs', default=4,  type=int, help='Default: 4.')
@@ -127,9 +134,9 @@ def run(args):
     dirpath = Path(args['dirpath'])
 
     # Data splits
-    te_method = args['te_method']
-    cv_method = args['cv_method']
-    te_size = split_size(args['te_size'])
+    # te_method = args['te_method']
+    # cv_method = args['cv_method']
+    # te_size = split_size(args['te_size'])
     vl_size = split_size(args['vl_size'])
 
     # Features 
@@ -141,8 +148,10 @@ def run(args):
     n_jobs = args['n_jobs']
 
     # Hard split
-    grp_by_col = None
-    # cv_method = 'simple'
+    # grp_by_col = None
+    split_on = args['split_on'] if args['split_on'] is None else args['split_on'].upper()
+    cv_method = 'simple' if split_on is None else 'group'
+    te_method = cv_method 
 
     # TODO: this needs to be improved
     mltype = 'reg'  # required for the splits (stratify in case of classification)
@@ -172,8 +181,6 @@ def run(args):
 
     # Split features and traget, and dump to file
     lg.logger.info('\nSplit features and meta.')
-    # meta = data[['AUC', 'CELL', 'DRUG']]
-    # xdata = data.drop(columns=['AUC', 'CELL', 'DRUG'])
     xdata = extract_subset_fea(data, fea_list=fea_list, fea_sep='_')
     meta = data.drop(columns=xdata.columns)
     xdata.to_parquet( outdir/'xdata.parquet' )
@@ -187,112 +194,330 @@ def run(args):
 
     plot_hist(meta['AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_all.png')
     
-    
+
     # -----------------------------------------------
-    #       Train-test split
+    #       Generate CV splits (new)
     # -----------------------------------------------
+    """
     np.random.seed(SEED)
     idx_vec = np.random.permutation(xdata.shape[0])
 
-    if te_method is not None:
-        lg.logger.info('\nSplit train/test.')
-        te_splitter = cv_splitter(cv_method=te_method, cv_folds=1, test_size=te_size,
-                                  mltype=mltype, shuffle=False, random_state=SEED)
-
-        te_grp = meta[grp_by_col].values[idx_vec] if te_method=='group' else None
-        if is_string_dtype(te_grp): te_grp = LabelEncoder().fit_transform(te_grp)
-   
-        # Split train/test
-        tr_id, te_id = next(te_splitter.split(idx_vec, groups=te_grp))
-        tr_id = idx_vec[tr_id] # adjust the indices!
-        te_id = idx_vec[te_id] # adjust the indices!
-
-        pd.Series(tr_id).to_csv( outdir/f'tr_id.csv', index=False, header=[0] )
-        pd.Series(te_id).to_csv( outdir/f'te_id.csv', index=False, header=[0] )
-        
-        lg.logger.info('Train: {:.1f}'.format( len(tr_id)/xdata.shape[0] ))
-        lg.logger.info('Test:  {:.1f}'.format( len(te_id)/xdata.shape[0] ))
-        
-        # Update the master idx vector for the CV splits
-        idx_vec = tr_id
-
-        # Plot dist of responses (TODO: this can be done to all response metrics)
-        # plot_ytr_yvl_dist(ytr=tr_ydata.values, yvl=te_ydata.values,
-        #         title='tr and te', outpath=run_outdir/'tr_te_resp_dist.png')
-
-        # Confirm that group splits are correct
-        if te_method=='group' and grp_by_col is not None:
-            tr_grp_unq = set(meta.loc[tr_id, grp_by_col])
-            te_grp_unq = set(meta.loc[te_id, grp_by_col])
-            lg.logger.info(f'\tTotal group ({grp_by_col}) intersections btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}.')
-            lg.logger.info(f'\tA few intersections : {list(tr_grp_unq.intersection(te_grp_unq))[:3]}.')
-
-        # Update vl_size to effective vl_size
-        vl_size = vl_size * xdata.shape[0]/len(tr_id)
-        
-        # Plot hist te
-        pd.Series(meta.loc[te_id, 'AUC'].values, name='yte').to_csv(outdir/'yte.csv')
-        plot_hist(meta.loc[te_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_test.png')
-
-        del tr_id, te_id
-
-
-    # -----------------------------------------------
-    #       Generate CV splits
-    # -----------------------------------------------
-    cv_folds_list = [1, 5, 7, 10, 15, 20, 25]
+    cv_folds_list = [1, 5, 7, 10, 15, 20]
     lg.logger.info(f'\nStart CV splits ...')
-    
+
     for cv_folds in cv_folds_list:
         lg.logger.info(f'\nCV folds: {cv_folds}')
 
+        # Convert vl_size into int
+        # vl_size_int = int(vl_size*len(idx_vec))
+
+        # Create CV splitter
         cv = cv_splitter(cv_method=cv_method, cv_folds=cv_folds, test_size=vl_size,
                          mltype=mltype, shuffle=False, random_state=SEED)
 
-        cv_grp = meta[grp_by_col].values[idx_vec] if cv_method=='group' else None
+        # Command meta[split_on].values[idx_vec] returns the vector meta[split_on].values
+        # in an order specified by idx_vec
+        # For example:
+        # aa = meta[split_on][:3]
+        # print(aa.values)
+        # print(aa.values[[0,2,1]])
+        # m = meta[split_on]
+        cv_grp = meta[split_on].values[idx_vec] if split_on is not None else None
         if is_string_dtype(cv_grp): cv_grp = LabelEncoder().fit_transform(cv_grp)
     
-        tr_folds = {}
-        vl_folds = {}
-
+        tr_folds = {} 
+        vl_folds = {} 
+        te_folds = {}
+        
         # Start CV iters
         for fold, (tr_id, vl_id) in enumerate(cv.split(idx_vec, groups=cv_grp)):
+            lg.logger.info(f'\nFold {fold+1}')
             tr_id = idx_vec[tr_id] # adjust the indices!
             vl_id = idx_vec[vl_id] # adjust the indices!
-
+            # t = meta.loc[tr_id, split_on]
+            # v = meta.loc[vl_id, split_on]
+            # print(len(vl_id)/len(idx_vec))
+            
+            # -----------------
+            # Store tr ids
             tr_folds[fold] = tr_id.tolist()
+
+            # Create splitter that splits vl into vl and te (splits by half)
+            te_splitter = cv_splitter(cv_method=te_method, cv_folds=1, test_size=0.5,
+                                      mltype=mltype, shuffle=False, random_state=SEED)
+
+            # Update the index array
+            idx_vec_ = vl_id; del vl_id
+
+            te_grp = meta[split_on].values[idx_vec_] if split_on is not None else None
+            if is_string_dtype(te_grp): te_grp = LabelEncoder().fit_transform(te_grp)
+
+            # Split vl set into vl and te
+            vl_id, te_id = next(te_splitter.split(idx_vec_, groups=te_grp))
+            vl_id = idx_vec_[vl_id] # adjust the indices!
+            te_id = idx_vec_[te_id] # adjust the indices!
+            # v = meta.loc[vl_id, split_on]
+            # e = meta.loc[te_id, split_on]
+
+            # Store vl and te ids
             vl_folds[fold] = vl_id.tolist()
+            te_folds[fold] = te_id.tolist()
+            # -----------------
+
+            lg.logger.info('Train samples {} ({:.2f}%)'.format( len(tr_id), 100*len(tr_id)/xdata.shape[0] ))
+            lg.logger.info('Val   samples {} ({:.2f}%)'.format( len(vl_id), 100*len(vl_id)/xdata.shape[0] ))
+            lg.logger.info('Test  samples {} ({:.2f}%)'.format( len(te_id), 100*len(te_id)/xdata.shape[0] ))
 
             # Confirm that group splits are correct
-            if cv_method=='group' and grp_by_col is not None:
-                tr_grp_unq = set(meta.loc[tr_id, grp_by_col])
-                vl_grp_unq = set(meta.loc[vl_id, grp_by_col])
-                lg.logger.info(f'\tTotal group ({grp_by_col}) intersections btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}.')
+            if split_on is not None:
+                tr_grp_unq = set(meta.loc[tr_id, split_on])
+                vl_grp_unq = set(meta.loc[vl_id, split_on])
+                te_grp_unq = set(meta.loc[te_id, split_on])
+                lg.logger.info(f'\tTotal group ({split_on}) intersec btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}.')
+                lg.logger.info(f'\tTotal group ({split_on}) intersec btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}.')
+                lg.logger.info(f'\tTotal group ({split_on}) intersec btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}.')
                 lg.logger.info(f'\tUnique cell lines in tr: {len(tr_grp_unq)}.')
                 lg.logger.info(f'\tUnique cell lines in vl: {len(vl_grp_unq)}.')
-        
+                lg.logger.info(f'\tUnique cell lines in te: {len(te_grp_unq)}.')
+
         # Convet to df
         # from_dict takes too long  -->  faster described here: stackoverflow.com/questions/19736080/
         # tr_folds = pd.DataFrame.from_dict(tr_folds, orient='index').T 
         # vl_folds = pd.DataFrame.from_dict(vl_folds, orient='index').T
         tr_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in tr_folds.items() ]))
         vl_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in vl_folds.items() ]))
+        te_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in te_folds.items() ]))
 
         # Dump
         tr_folds.to_csv( outdir/f'{cv_folds}fold_tr_id.csv', index=False )
         vl_folds.to_csv( outdir/f'{cv_folds}fold_vl_id.csv', index=False )
+        te_folds.to_csv( outdir/f'{cv_folds}fold_te_id.csv', index=False )
         
         # Plot target dist only for the 1-fold case
+        # TODO: consider to plot dist for all k-fold where k>1
         if cv_folds==1 and fold==0:
             plot_hist(meta.loc[tr_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_train.png')
             plot_hist(meta.loc[vl_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_val.png')
+            plot_hist(meta.loc[te_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_test.png')
             
             plot_ytr_yvl_dist(ytr=meta.loc[tr_id, 'AUC'], yvl=meta.loc[vl_id, 'AUC'],
                               title='ytr_yvl_dist', outpath=outdir/'ytr_yvl_dist.png')
             
-            pd.Series(meta.loc[tr_id, 'AUC'].values, name='ytr').to_csv(outdir/'ytr.csv')
-            pd.Series(meta.loc[vl_id, 'AUC'].values, name='yvl').to_csv(outdir/'yvl.csv')
+            # pd.Series(meta.loc[tr_id, 'AUC'].values, name='ytr').to_csv(outdir/'ytr.csv')
+            # pd.Series(meta.loc[vl_id, 'AUC'].values, name='yvl').to_csv(outdir/'yvl.csv')
+            # pd.Series(meta.loc[te_id, 'AUC'].values, name='yte').to_csv(outdir/'yte.csv')
+    """
 
+
+    # -----------------------------------------------
+    #       Generate CV splits (new)
+    # -----------------------------------------------
+    np.random.seed(SEED)
+    idx_vec = np.random.permutation(xdata.shape[0])
+
+    cv_folds_list = [1, 5, 7, 10, 15, 20]
+    lg.logger.info(f'\nStart CV splits ...')
+
+    for cv_folds in cv_folds_list:
+        lg.logger.info(f'\nCV folds: {cv_folds}')
+
+        # Create CV splitter
+        cv = cv_splitter(cv_method=cv_method, cv_folds=cv_folds, test_size=vl_size,
+                         mltype=mltype, shuffle=False, random_state=SEED)
+
+        cv_grp = meta[split_on].values[idx_vec] if split_on is not None else None
+        if is_string_dtype(cv_grp): cv_grp = LabelEncoder().fit_transform(cv_grp)
+    
+        tr_folds = {} 
+        vl_folds = {} 
+        te_folds = {}
+        
+        # Start CV iters (this for loop generates the tr and vl splits)
+        for fold, (tr_id, vl_id) in enumerate(cv.split(idx_vec, groups=cv_grp)):
+            lg.logger.info(f'\nFold {fold}')
+            tr_id = idx_vec[tr_id] # adjust the indices!
+            vl_id = idx_vec[vl_id] # adjust the indices!
+
+            # -----------------
+            # Store vl ids
+            vl_folds[fold] = vl_id.tolist()
+
+            # Update te_size to the new full size of available samples
+            if cv_folds == 1:
+                te_size_ = vl_size / (1 - vl_size)
+            else:
+                te_size_ = len(vl_id)/len(idx_vec) / (1 - len(vl_id)/len(idx_vec))
+
+            # Create splitter that splits tr into tr and te
+            te_splitter = cv_splitter(cv_method=te_method, cv_folds=1, test_size=te_size_,
+                                      mltype=mltype, shuffle=False, random_state=SEED)
+
+            # Update the index array
+            idx_vec_ = tr_id; del tr_id
+
+            te_grp = meta[split_on].values[idx_vec_] if split_on is not None else None
+            if is_string_dtype(te_grp): te_grp = LabelEncoder().fit_transform(te_grp)
+
+            # Split tr into tr and te
+            tr_id, te_id = next(te_splitter.split(idx_vec_, groups=te_grp))
+            tr_id = idx_vec_[tr_id] # adjust the indices!
+            te_id = idx_vec_[te_id] # adjust the indices!
+
+            # Store tr and te ids
+            tr_folds[fold] = tr_id.tolist()
+            te_folds[fold] = te_id.tolist()
+            # -----------------
+
+            lg.logger.info('Train samples {} ({:.2f}%)'.format( len(tr_id), 100*len(tr_id)/xdata.shape[0] ))
+            lg.logger.info('Val   samples {} ({:.2f}%)'.format( len(vl_id), 100*len(vl_id)/xdata.shape[0] ))
+            lg.logger.info('Test  samples {} ({:.2f}%)'.format( len(te_id), 100*len(te_id)/xdata.shape[0] ))
+
+            # Confirm that group splits are correct
+            if split_on is not None:
+                tr_grp_unq = set(meta.loc[tr_id, split_on])
+                vl_grp_unq = set(meta.loc[vl_id, split_on])
+                te_grp_unq = set(meta.loc[te_id, split_on])
+                lg.logger.info(f'\tTotal group ({split_on}) intersec btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}.')
+                lg.logger.info(f'\tTotal group ({split_on}) intersec btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}.')
+                lg.logger.info(f'\tTotal group ({split_on}) intersec btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}.')
+                lg.logger.info(f'\tUnique cell lines in tr: {len(tr_grp_unq)}.')
+                lg.logger.info(f'\tUnique cell lines in vl: {len(vl_grp_unq)}.')
+                lg.logger.info(f'\tUnique cell lines in te: {len(te_grp_unq)}.')
+
+        # Convet to df
+        # from_dict takes too long  -->  faster described here: stackoverflow.com/questions/19736080/
+        # tr_folds = pd.DataFrame.from_dict(tr_folds, orient='index').T 
+        # vl_folds = pd.DataFrame.from_dict(vl_folds, orient='index').T
+        tr_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in tr_folds.items() ]))
+        vl_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in vl_folds.items() ]))
+        te_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in te_folds.items() ]))
+
+        # Dump
+        tr_folds.to_csv( outdir/f'{cv_folds}fold_tr_id.csv', index=False )
+        vl_folds.to_csv( outdir/f'{cv_folds}fold_vl_id.csv', index=False )
+        te_folds.to_csv( outdir/f'{cv_folds}fold_te_id.csv', index=False )
+        
+        # Plot target dist only for the 1-fold case
+        # TODO: consider to plot dist for all k-fold where k>1
+        if cv_folds==1 and fold==0:
+            plot_hist(meta.loc[tr_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_train.png')
+            plot_hist(meta.loc[vl_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_val.png')
+            plot_hist(meta.loc[te_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_test.png')
+            
+            plot_ytr_yvl_dist(ytr=meta.loc[tr_id, 'AUC'], yvl=meta.loc[vl_id, 'AUC'],
+                              title='ytr_yvl_dist', outpath=outdir/'ytr_yvl_dist.png')
+            
+            # pd.Series(meta.loc[tr_id, 'AUC'].values, name='ytr').to_csv(outdir/'ytr.csv')
+            # pd.Series(meta.loc[vl_id, 'AUC'].values, name='yvl').to_csv(outdir/'yvl.csv')
+            # pd.Series(meta.loc[te_id, 'AUC'].values, name='yte').to_csv(outdir/'yte.csv')
+
+
+
+#     # -----------------------------------------------
+#     #       Train-test split
+#     # -----------------------------------------------
+#     np.random.seed(SEED)
+#     idx_vec = np.random.permutation(xdata.shape[0])
+# 
+#     if te_method is not None:
+#         lg.logger.info('\nSplit train/test.')
+#         te_splitter = cv_splitter(cv_method=te_method, cv_folds=1, test_size=te_size,
+#                                   mltype=mltype, shuffle=False, random_state=SEED)
+# 
+#         te_grp = meta[grp_by_col].values[idx_vec] if te_method=='group' else None
+#         if is_string_dtype(te_grp): te_grp = LabelEncoder().fit_transform(te_grp)
+#    
+#         # Split train/test
+#         tr_id, te_id = next(te_splitter.split(idx_vec, groups=te_grp))
+#         tr_id = idx_vec[tr_id] # adjust the indices!
+#         te_id = idx_vec[te_id] # adjust the indices!
+# 
+#         pd.Series(tr_id).to_csv( outdir/f'tr_id.csv', index=False, header=[0] )
+#         pd.Series(te_id).to_csv( outdir/f'te_id.csv', index=False, header=[0] )
+#         
+#         lg.logger.info('Train: {:.1f}'.format( len(tr_id)/xdata.shape[0] ))
+#         lg.logger.info('Test:  {:.1f}'.format( len(te_id)/xdata.shape[0] ))
+#         
+#         # Update the master idx vector for the CV splits
+#         idx_vec = tr_id
+# 
+#         # Plot dist of responses (TODO: this can be done to all response metrics)
+#         # plot_ytr_yvl_dist(ytr=tr_ydata.values, yvl=te_ydata.values,
+#         #         title='tr and te', outpath=run_outdir/'tr_te_resp_dist.png')
+# 
+#         # Confirm that group splits are correct
+#         if te_method=='group' and grp_by_col is not None:
+#             tr_grp_unq = set(meta.loc[tr_id, grp_by_col])
+#             te_grp_unq = set(meta.loc[te_id, grp_by_col])
+#             lg.logger.info(f'\tTotal group ({grp_by_col}) intersections btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}.')
+#             lg.logger.info(f'\tA few intersections : {list(tr_grp_unq.intersection(te_grp_unq))[:3]}.')
+# 
+#         # Update vl_size to effective vl_size
+#         vl_size = vl_size * xdata.shape[0]/len(tr_id)
+#         
+#         # Plot hist te
+#         pd.Series(meta.loc[te_id, 'AUC'].values, name='yte').to_csv(outdir/'yte.csv')
+#         plot_hist(meta.loc[te_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_test.png')
+# 
+#         del tr_id, te_id
+# 
+# 
+#     # -----------------------------------------------
+#     #       Generate CV splits
+#     # -----------------------------------------------
+#     cv_folds_list = [1, 5, 7, 10, 15, 20, 25]
+#     lg.logger.info(f'\nStart CV splits ...')
+#     
+#     for cv_folds in cv_folds_list:
+#         lg.logger.info(f'\nCV folds: {cv_folds}')
+# 
+#         cv = cv_splitter(cv_method=cv_method, cv_folds=cv_folds, test_size=vl_size,
+#                          mltype=mltype, shuffle=False, random_state=SEED)
+# 
+#         cv_grp = meta[grp_by_col].values[idx_vec] if cv_method=='group' else None
+#         if is_string_dtype(cv_grp): cv_grp = LabelEncoder().fit_transform(cv_grp)
+#     
+#         tr_folds = {}
+#         vl_folds = {}
+# 
+#         # Start CV iters
+#         for fold, (tr_id, vl_id) in enumerate(cv.split(idx_vec, groups=cv_grp)):
+#             tr_id = idx_vec[tr_id] # adjust the indices!
+#             vl_id = idx_vec[vl_id] # adjust the indices!
+# 
+#             tr_folds[fold] = tr_id.tolist()
+#             vl_folds[fold] = vl_id.tolist()
+# 
+#             # Confirm that group splits are correct
+#             if cv_method=='group' and grp_by_col is not None:
+#                 tr_grp_unq = set(meta.loc[tr_id, grp_by_col])
+#                 vl_grp_unq = set(meta.loc[vl_id, grp_by_col])
+#                 lg.logger.info(f'\tTotal group ({grp_by_col}) intersections btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}.')
+#                 lg.logger.info(f'\tUnique cell lines in tr: {len(tr_grp_unq)}.')
+#                 lg.logger.info(f'\tUnique cell lines in vl: {len(vl_grp_unq)}.')
+#         
+#         # Convet to df
+#         # from_dict takes too long  -->  faster described here: stackoverflow.com/questions/19736080/
+#         # tr_folds = pd.DataFrame.from_dict(tr_folds, orient='index').T 
+#         # vl_folds = pd.DataFrame.from_dict(vl_folds, orient='index').T
+#         tr_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in tr_folds.items() ]))
+#         vl_folds = pd.DataFrame(dict([ (k, pd.Series(v)) for k, v in vl_folds.items() ]))
+# 
+#         # Dump
+#         tr_folds.to_csv( outdir/f'{cv_folds}fold_tr_id.csv', index=False )
+#         vl_folds.to_csv( outdir/f'{cv_folds}fold_vl_id.csv', index=False )
+#         
+#         # Plot target dist only for the 1-fold case
+#         if cv_folds==1 and fold==0:
+#             plot_hist(meta.loc[tr_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_train.png')
+#             plot_hist(meta.loc[vl_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_val.png')
+#             
+#             plot_ytr_yvl_dist(ytr=meta.loc[tr_id, 'AUC'], yvl=meta.loc[vl_id, 'AUC'],
+#                               title='ytr_yvl_dist', outpath=outdir/'ytr_yvl_dist.png')
+#             
+#             pd.Series(meta.loc[tr_id, 'AUC'].values, name='ytr').to_csv(outdir/'ytr.csv')
+#             pd.Series(meta.loc[vl_id, 'AUC'].values, name='yvl').to_csv(outdir/'yvl.csv')
+ 
     lg.kill_logger()
     print('Done.')
     

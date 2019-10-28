@@ -27,8 +27,6 @@ import pandas as pd
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
-SEED = 0
-
 
 # File path
 filepath = Path(__file__).resolve().parent
@@ -56,7 +54,7 @@ def parse_args(args):
 
     # Data split methods
     parser.add_argument('-cvm', '--cv_method', default='simple', type=str, choices=['simple', 'group'], help='CV split method (default: simple).')
-    parser.add_argument('-cvf', '--cv_folds', default=5, type=str, help='Number cross-val folds (default: 5).')
+    parser.add_argument('-cvf', '--cv_folds', default=1, type=str, help='Number cross-val folds (default: 1).')
     parser.add_argument('-cvf_arr', '--cv_folds_arr', nargs='+', type=int, default=None, help='The specific folds in the cross-val run (default: None).')
     
     # ML models
@@ -66,7 +64,11 @@ def parse_args(args):
                                  'nn_reg_neuron_less', 'nn_reg_neuron_more'], help='ML model (default: lgb_reg).')
 
     # LightGBM params
-    parser.add_argument('--n_trees', default=100, type=int, help='Number of trees (default: 100).')
+    parser.add_argument('--gbm_trees', default=100, type=int, help='Number of trees (default: 100).')
+    parser.add_argument('--gbm_max_depth', default=-1, type=int, help='Maximum tree depth for base learners (default: -1).')
+    # parser.add_argument('--gbm_iters', default=None, type=int, help='Limit number of iterations in the prediction (default: None).')
+    parser.add_argument('--gbm_lr', default=0.1, type=float, help='Boosting learning rate (default: 0.1).')
+    parser.add_argument('--gbm_leaves', default=31, type=int, help='Maximum tree leaves for base learners (default: 31).')
     
     # NN hyper_params
     parser.add_argument('-ep', '--epochs', default=200, type=int, help='Number of epochs (default: 200).')
@@ -93,14 +95,15 @@ def parse_args(args):
     parser.add_argument('--n_shards', default=None, type=int, help='Number of shards (used only when shard_step_scale is `linear` (default: None).')
     parser.add_argument('--shards_arr', nargs='+', type=int, default=None, help='List of the actual shards in the learning curve plot (default: None).')
     
-    # Define n_jobs
+    # Other
     parser.add_argument('--n_jobs', default=4, type=int, help='Default: 4.')
+    parser.add_argument('--seed', default=0, type=int, help='Default: 0.')
 
     # Parse args
     args = parser.parse_args(args)
     return args
         
-    
+
 def create_outdir(outdir, args, src):
     t = datetime.now()
     t = [t.year, '-', t.month, '-', t.day, '_', 'h', t.hour, '-', 'm', t.minute]
@@ -170,9 +173,6 @@ def run(args):
     # fea_list = cell_fea + drug_fea + other_fea    
     fea_list = cell_fea + drug_fea
 
-    # LightGBM params
-    n_trees = args['n_trees']
-    
     # NN params
     epochs = args['epochs']
     batch_size = args['batch_size']
@@ -220,12 +220,9 @@ def run(args):
     meta  = read_data_file( dirpath/'meta.parquet', 'parquet' )
     ydata = meta[[target_name]]
 
-    tr_id = pd.read_csv( dirpath/f'{cv_folds}fold_tr_id.csv' )
-    vl_id = pd.read_csv( dirpath/f'{cv_folds}fold_vl_id.csv' )
-
-    # tr_id = get_file( dirpath/f'{cv_folds}fold_tr_id.csv' )
-    # vl_id = get_file( dirpath/f'{cv_folds}fold_vl_id.csv' )
-    # te_id = get_file( dirpath/f'{cv_folds}fold_te_id.csv' )
+    tr_id = read_data_file( dirpath/f'{cv_folds}fold_tr_id.csv' )
+    vl_id = read_data_file( dirpath/f'{cv_folds}fold_vl_id.csv' )
+    te_id = read_data_file( dirpath/f'{cv_folds}fold_te_id.csv' )
 
     src = dirpath.name.split('_')[0]
 
@@ -254,11 +251,13 @@ def run(args):
     # -----------------------------------------------
     if model_name == 'lgb_reg':
         framework = 'lightgbm'
-        init_kwargs = {'n_estimators': n_trees, 'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
+        init_kwargs = {'n_estimators': args['gbm_trees'], 'max_depth': args['gbm_max_depth'],
+                       'learning_rate': args['gbm_lr'], 'num_leaves': args['gbm_leaves'],
+                       'n_jobs': args['n_jobs'], 'random_state': args['seed']}
         fit_kwargs = {'verbose': False}
     elif model_name == 'rf_reg':
         framework = 'sklearn'
-        init_kwargs = {'n_jobs': n_jobs, 'random_state': SEED, 'logger': lg.logger}
+        init_kwargs = {'n_jobs': args['n_jobs'], 'random_state': args['seed']}
         fit_kwargs = {}
     elif model_name == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':
         framework = 'keras'
@@ -273,15 +272,17 @@ def run(args):
     lg.logger.info(f'Learning curves {src} ...')
     lg.logger.info('-' * 50)
 
+    lrn_crv_init_kwargs = { 'cv': None, 'cv_lists': (tr_id, vl_id, te_id), 'cv_folds_arr': cv_folds_arr,
+            'shard_step_scale': shard_step_scale, 'n_shards': n_shards, 'min_shard': min_shard, 'max_shard': max_shard,
+            'shards_arr': shards_arr, 'args': args, 'logger': lg.logger, 'outdir': run_outdir}
+
+    lrn_crv_trn_kwargs = { 'framework': framework, 'mltype': mltype, 'model_name': model_name,
+            'init_kwargs': init_kwargs, 'fit_kwargs': fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
+            'n_jobs': n_jobs, 'random_state': args['seed'] }
+
     t0 = time()
-    lc = LearningCurve( X=xdata, Y=ydata, cv=None, cv_lists=(tr_id, vl_id), cv_folds_arr=cv_folds_arr,
-        shard_step_scale=shard_step_scale, n_shards=n_shards, min_shard=min_shard, max_shard=max_shard, shards_arr=shards_arr,
-        args=args, logger=lg.logger, outdir=run_outdir )
-
-    lrn_crv_scores = lc.trn_learning_curve( framework=framework, mltype=mltype, model_name=model_name,
-        init_kwargs=init_kwargs, fit_kwargs=fit_kwargs, clr_keras_kwargs=clr_keras_kwargs,
-        n_jobs=n_jobs, random_state=SEED )
-
+    lc = LearningCurve( X=xdata, Y=ydata, **lrn_crv_init_kwargs )
+    lrn_crv_scores = lc.trn_learning_curve( **lrn_crv_trn_kwargs )
     lg.logger.info('Runtime: {:.1f} hrs'.format( (time()-t0)/3600) )
 
 

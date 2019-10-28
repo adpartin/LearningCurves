@@ -537,15 +537,17 @@ class LGBM_REGRESSOR(BaseMLModel):
     ml_objective = 'regression'
     model_name = 'lgb_reg'
 
-    def __init__(self, n_estimators=100, eval_metric=['l2', 'l1'], n_jobs=1, random_state=None, logger=None):
+    # def __init__(self, n_estimators=100, eval_metric=['l2', 'l1'], n_jobs=1, random_state=None, logger=None):
+    def __init__(self, **kwargs):
         # TODO: use config file to set default parameters (like in candle)
         
-        self.model = lgb.LGBMModel(
-            objective = LGBM_REGRESSOR.ml_objective,
-            n_estimators = n_estimators,
-            n_jobs = n_jobs,
-            random_state = random_state)
+       #  self.model = lgb.LGBMModel(
+       #      objective = LGBM_REGRESSOR.ml_objective,
+       #      n_estimators = n_estimators,
+       #      n_jobs = n_jobs,
+       #      random_state = random_state)
 
+        self.model = lgb.LGBMModel( objective = LGBM_REGRESSOR.ml_objective, **kwargs )
 
     # def fit(self, X, y, eval_set=None, **fit_params):
     #     #self.eval_set = eval_set
@@ -618,3 +620,6 @@ class RF_REGRESSOR(BaseMLModel):
     def dump_model(self, outdir='.'):
         joblib.dump(self.model, filename=os.path.join(outdir, 'model.' + RF_REGRESSOR.model_name + '.pkl'))
         # model_ = joblib.load(filename=os.path.join(run_outdir, 'lgb_reg_model.pkl'))        
+
+
+
