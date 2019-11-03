@@ -49,3 +49,6 @@ def plot_hist(x, var_name, fit=None, bins=100, path='hist.png'):
     if label is not None: plt.legend()
     plt.title(var_name + ' hist')
     plt.savefig(path, bbox_inches='tight')
+
+
+

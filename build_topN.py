@@ -17,7 +17,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 filepath = Path(__file__).resolve().parent  # (ap)
-SEED = 0  # (ap)
 
 
 # (ap) Utils
@@ -72,6 +71,12 @@ def parse_arguments(model_name=''):
     parser.add_argument('--target', type=str, default='AUC',
                         choices=['AUC', 'IC50', 'EC50', 'EC50se', 'R2fit', 'Einf', 'HS', 'AAC1', 'AUC1', 'DSS1'],
                         help='Response label value. Default: AUC')
+    parser.add_argument('--seed', type=int, default=0, help='Seed number (Default: 0)') # (ap)
+    parser.add_argument('--src', nargs='+', default=None,
+                        choices=['ccle', 'gcsi', 'gdsc', 'ctrp', 'nci60'],
+                        help='Data sources to extract (default: None).') # (ap)
+    # parser.add_argument('--rna_norm', type=str, choices=['raw', 'combat', 'source_scale'], default='combat',
+    #                     help='RNA-Seq normalization (Default: combat)') # (ap)
 
     args, unparsed = parser.parse_known_args()
     return args, unparsed
@@ -90,7 +95,7 @@ def check_data_files(args):
     return reduce((lambda x, y: x & y), map(check_file, filelist))
 
 
-def get_cell_feature_path(args):
+def get_cell_feature_path(args, rna_norm='combat'):
     if args.cell_feature_subset == 'all':
         filename = 'combined_{}_data_combat'.format(args.cell_feature)
     else:
@@ -109,14 +114,28 @@ def build_file_basename(args):
 
 
 def build_filename(args):
-    return "{}.{}".format(build_file_basename(args), args.format)
-
+    # return "{}.{}".format(build_file_basename(args), args.format) # (ap) commented
+    # (ap) added
+    if args.n_top > 200:
+        src = '' if args.src is None else '_'.join(args.src)
+        fname = "tidy.{}.res_{}.cf_{}.dd_{}{}".format(
+                src, args.response_type, args.cell_feature, args.drug_descriptor, '.labled' if args.labels else '')
+    else:
+        fname = "tidy.top{}.{}.res_{}.cf_{}.dd_{}{}".format(
+                args.top_n, src, args.response_type, args.cell_feature, args.drug_descriptor, '.labled' if args.labels else '')
+        
 
 def build_dataframe(args):
-
+    na_values = ['na', '-', ''] # (ap)
+    
     # (ap) Create outdir and logger
     import os
-    outdir = Path('top' + str(args.top_n) + '_data')
+    # outdir = Path('top' + str(args.top_n) + sffx + '_data')
+    sffx = '' if args.src is None else '_'.join(args.src)
+    if args.top_n < 200:
+        outdir = Path('top' + str(args.top_n) + sffx + '_data_seed' + str(args.seed))
+    else:
+        outdir = Path(sffx + '_data_seed' + str(args.seed))
     os.makedirs(outdir, exist_ok=True)    
     lg = Logger(outdir/'logfile.log')
     lg.logger.info(f'File path: {filepath}')
@@ -124,7 +143,13 @@ def build_dataframe(args):
     dump_dict(vars(args), outpath=outdir/'args.txt') 
     
     # Identify Top N cancer types
-    df_response = pd.read_csv(response_path, sep='\t', engine='c', low_memory=False)
+    df_response = pd.read_csv(response_path, sep='\t', engine='c', low_memory=False, na_values=na_values, warn_bad_lines=True)
+    lg.logger.info(df_response.groupby('SOURCE').agg({'CELL': 'nunique', 'DRUG': 'nunique'}).reset_index()) # (ap)
+    
+    # (ap) Extract specific data sources
+    df_response['SOURCE'] = df_response['SOURCE'].apply(lambda x: x.lower()) # (ap)
+    if args.src is not None:
+        df_response = df_response[df_response['SOURCE'].isin(args.src)].reset_index(drop=True)
 
     df_uniq_cl_drugs = df_response[['CELL', 'DRUG']].drop_duplicates().reset_index(drop=True)
 
@@ -154,8 +179,10 @@ def build_dataframe(args):
     target = args.target
 
     # df_response = df_response[df_response.CELL.isin(cl_filter) & df_response.DRUG.isin(dr_filter)][['CELL', 'DRUG', target]].drop_duplicates().reset_index(drop=True) # (ap) commented
-    df_response = df_response[df_response.CELL.isin(cl_filter) & df_response.DRUG.isin(dr_filter)].drop_duplicates().reset_index(drop=True) # (ap) keep all targets
+    idx = df_response.CELL.isin(cl_filter) & df_response.DRUG.isin(dr_filter)
+    df_response = df_response[idx].drop_duplicates().reset_index(drop=True) # (ap) keep all targets
 
+    
     # (ap) Drop bad points (these identified by Yitan)
     # TODO: confirm this with Yitan!
     """
@@ -179,15 +206,21 @@ def build_dataframe(args):
         df_response[target] = df_response[target].apply(lambda x: 0 if x < 0.5 else 1)
         df_response.rename(columns={target: 'Response'}, inplace=True)
 
+    # ----------------
+    # Load RNA-Seq
+    # ----------------        
     # Join response data with Drug descriptor & RNASeq
-    df_rnaseq = pd.read_csv(get_cell_feature_path(args), sep='\t', low_memory=False)
+    df_rnaseq = pd.read_csv(get_cell_feature_path(args), sep='\t', low_memory=False, na_values=na_values, warn_bad_lines=True)
     df_rnaseq = df_rnaseq[df_rnaseq['Sample'].isin(cl_filter)].reset_index(drop=True)
 
     df_rnaseq.rename(columns={'Sample': 'CELL'}, inplace=True)
     df_rnaseq.columns = ['GE_' + x if i > 0 else x for i, x in enumerate(df_rnaseq.columns.to_list())]
     df_rnaseq = df_rnaseq.set_index(['CELL'])
 
-    df_descriptor = pd.read_csv(get_drug_descriptor_path(args), sep='\t', low_memory=False, na_values='na')
+    # ----------------
+    # Load descriptors
+    # ----------------
+    df_descriptor = pd.read_csv(get_drug_descriptor_path(args), sep='\t', low_memory=False, na_values=na_values, warn_bad_lines=True)
     # df_descriptor = df_descriptor[df_descriptor.DRUG.isin(dr_filter)].set_index(['DRUG']).fillna(0) # (ap) commented --> bad imputation!
     df_descriptor = df_descriptor[df_descriptor.DRUG.isin(dr_filter)].set_index(['DRUG']) # (ap) added --> drop data imputation!
     
@@ -207,7 +240,7 @@ def build_dataframe(args):
 
     # (ap) Impute missing values (drug descriptors)
     lg.logger.info('\nImpute NA values ...')
-    df_descriptor = impute_values(data=df_descriptor, logger=None)
+    df_descriptor = impute_values(df_descriptor, logger=None)
 
     # (ap)
     # There are still lots of descriptors which have only a few unique values.
@@ -237,7 +270,8 @@ def build_dataframe(args):
 
     # (ap) Shuffle
     lg.logger.info("Shuffle final df.")
-    df_final = df_final.sample(frac=1.0, random_state=SEED).reset_index(drop=True)
+    df_final = df_final.sample(frac=1.0, random_state=args.seed).reset_index(drop=True)
+    lg.logger.info(df_final.groupby('SOURCE').agg({'CELL': 'nunique', 'DRUG': 'nunique'}).reset_index()) # (ap)
     
     save_filename = build_filename(args)
     # print("Saving to {}".format(save_filename)) # (ap) remove
@@ -285,7 +319,7 @@ def build_dataframe(args):
         # fig, ax = plt.subplots(figsize=(7, 5))
         # plt.barh(dd['CANCER_TYPE'], dd['CELL_DRUG'], color='b', align='center', alpha=0.7)
         # plt.xlabel('Total responses', fontsize=14);
-        plt.savefig(outdir/'Top{}_histogram.png'.format(top_n), dpi=300, bbox_inches='tight')
+        plt.savefig(outdir/'Top{}_histogram.png'.format(top_n), dpi=100, bbox_inches='tight')
         
         return dd
     

@@ -17,6 +17,10 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+# matplotlib.org/3.1.1/gallery/color/color_cycle_default.html
+prop_cycle = plt.rcParams['axes.prop_cycle']
+colors = prop_cycle.by_key()['color']
+
 from sklearn.model_selection import cross_validate
 
 from sklearn.model_selection import train_test_split
@@ -54,6 +58,7 @@ class LearningCurve():
     """
     def __init__(self,
             X, Y,
+            meta=None,
             cv=5,
             cv_lists=None,  # (tr_id, vl_id, te_id)
             cv_folds_arr=None,
@@ -69,6 +74,7 @@ class LearningCurve():
         Args:
             X : array-like (pd.DataFrame or np.ndarray)
             Y : array-like (pd.DataFrame or np.ndarray)
+            meta : array-like file of metadata (each item corresponds to an (x,y) sample
             cv : (optional) number of cv folds (int) or sklearn cv splitter --> scikit-learn.org/stable/glossary.html#term-cv-splitter
             # cv_lists : tuple of 2 dicts, cv_lists[0] and cv_lists[1], that contain the tr and vl folds, respectively
             cv_lists : tuple of 3 dicts, cv_lists[0] and cv_lists[1], cv_lists[2], that contain the tr, vl, and te folds, respectively
@@ -91,6 +97,7 @@ class LearningCurve():
         """
         self.X = pd.DataFrame(X).values
         self.Y = pd.DataFrame(Y).values
+        self.meta = pd.DataFrame(meta)
         self.cv = cv
         self.cv_lists = cv_lists
         self.cv_folds_arr = cv_folds_arr
@@ -249,11 +256,11 @@ class LearningCurve():
         self.mltype = mltype
         self.model_name = model_name
         self.init_kwargs = init_kwargs
-        self.fit_kwargs = fit_kwargs 
+        self.fit_kwargs = fit_kwargs
         self.clr_keras_kwargs = clr_keras_kwargs
         self.metrics = metrics
         self.n_jobs = n_jobs
-        self.random_state = random_state
+        # self.random_state = random_state
         
         # Start nested loop of train size and cv folds
         tr_scores_all = [] # list of dicts
@@ -273,18 +280,20 @@ class LearningCurve():
             vl_id = self.vl_dct[vl_k]
             te_id = self.te_dct[te_k]
 
-            # Samples from this dataset are randomly sampled for training
+            # Samples from this dataset are sequentially sampled for TRAIN
             xtr = self.X[tr_id, :]
             # ytr = self.Y[tr_id, :]
             ytr = np.squeeze(self.Y[tr_id, :])        
 
-            # A fixed set of val samples for the current CV split
+            # A fixed set of VAL samples for the current CV split
             xvl = self.X[vl_id, :]
             yvl = np.squeeze(self.Y[vl_id, :])        
+            mvl = self.meta.loc[vl_id, :]
 
-            # A fixed set of test samples for the current CV split
+            # A fixed set of TEST samples for the current CV split
             xte = self.X[te_id, :]
             yte = np.squeeze(self.Y[te_id, :])        
+            mte = self.meta.loc[te_id, :]
 
             # Shards loop (iterate across the dataset sizes and train)
             """
@@ -301,6 +310,7 @@ class LearningCurve():
                 xtr_sub = xtr[idx[:tr_sz], :]
                 # ytr_sub = np.squeeze(ytr[idx[:tr_sz], :])
                 ytr_sub = ytr[idx[:tr_sz]]
+                mtr_sub = self.meta.loc[idx[:tr_sz], :]
                 
                 # Get the estimator
                 estimator = ml_models.get_model(self.model_name, init_kwargs=self.init_kwargs)
@@ -332,16 +342,21 @@ class LearningCurve():
                 # ... training set
                 y_pred, y_true = calc_preds(model, x=xtr_sub, y=ytr_sub, mltype=self.mltype)
                 tr_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                tr_scores['y_avg'] = np.mean(y_pred)
+                tr_scores['y_avg_true'] = np.mean(y_true)
+                tr_scores['y_avg_pred'] = np.mean(y_pred)
+                # mtr_sub.insert(loc=mtr_sub.shape[-1]-1, column='ytr_true', value=y_true, allow_duplicates=False)
+                # mtr_sub.insert(loc=mtr_sub.shape[-1]-1, column='ytr_pred', value=y_pred, allow_duplicates=False)
+                # cc = pd.concat([mtr_sub, preds], axis=1)
                 # ... val set
                 y_pred, y_true = calc_preds(model, x=xvl, y=yvl, mltype=self.mltype)
                 vl_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                vl_scores['y_avg'] = np.mean(y_pred)
+                vl_scores['y_avg_true'] = np.mean(y_true)
+                vl_scores['y_avg_pred'] = np.mean(y_pred)                
                 # ... test set
                 y_pred, y_true = calc_preds(model, x=xte, y=yte, mltype=self.mltype)
                 te_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                te_scores['y_avg'] = np.mean(y_pred)
-
+                te_scores['y_avg_true'] = np.mean(y_true)
+                te_scores['y_avg_pred'] = np.mean(y_pred)                
                 del estimator, model
                 
                 # Save predictions (need to include metadata)
@@ -428,12 +443,16 @@ class LearningCurve():
         # fit_kwargs['validation_split'] = self.val_split
         fit_kwargs['callbacks'] = keras_callbacks
 
+        # (debug)
+        ytr_avg_true = np.mean(ytr_sub)
+        yvl_avg_pred = np.mean(eval_set[1])
+        
         # Train model
         t0 = time()
         history = model.fit(xtr_sub, ytr_sub, **fit_kwargs)
         runtime = (time() - t0)/60
         ml_models.save_krs_history(history, outdir=trn_outdir)
-        ml_models.plot_prfrm_metrics(history, title=f'Train size: {tr_sz}', skp_ep=20, add_lr=True, outdir=trn_outdir)
+        ml_models.plot_prfrm_metrics(history, title=f'Train size: {tr_sz}', skp_ep=10, add_lr=True, outdir=trn_outdir)
 
         # Load the best model (https://github.com/keras-team/keras/issues/5916)
         # model = keras.models.load_model(str(trn_outdir/'model_best.h5'), custom_objects={'r2_krs': ml_models.r2_krs})
@@ -457,6 +476,10 @@ class LearningCurve():
         fit_kwargs['eval_set'] = eval_set
         fit_kwargs['early_stopping_rounds'] = 10
 
+        # (debug)
+        ytr_avg_true = np.mean(ytr_sub)
+        yvl_avg_pred = np.mean(eval_set[1])        
+        
         # Train and save model
         t0 = time()
         model.fit(xtr_sub, ytr_sub, **fit_kwargs)
@@ -487,7 +510,6 @@ class LearningCurve():
         return model, trn_outdir, runtime
 # --------------------------------------------------------------------------------
 
-    
 
 
 def define_keras_callbacks(outdir):
@@ -495,7 +517,6 @@ def define_keras_callbacks(outdir):
     csv_logger = CSVLogger(outdir/'training.log')
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.75, patience=20, verbose=1, mode='auto',
                                   min_delta=0.0001, cooldown=3, min_lr=0.000000001)
-    # early_stop = EarlyStopping(monitor='val_loss', patience=100, verbose=1)
     early_stop = EarlyStopping(monitor='val_loss', patience=50, verbose=1)
     return [checkpointer, csv_logger, early_stop, reduce_lr]
 
@@ -550,7 +571,7 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
             fname = 'lrn_crv_' + metric_name + '_log.png'
         else:
             fname = 'lrn_crv_' + metric_name + '.png'
-        title = 'Learning curve'
+        title = 'Learning Curve'
 
         path = outdir / fname
         fig = plot_lrn_crv(rslt=rslt, metric_name=metric_name, figsize=figsize,
@@ -605,10 +626,10 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     if ax is None: fig, ax = plt.subplots(figsize=figsize)
         
     if tr_scores is not None:
-        plot_single_crv(tr_shards, scores=tr_scores, ax=ax, color='b', phase='Train')
+        plot_single_crv(tr_shards, scores=tr_scores, ax=ax, color='b', alpha=0.5, phase='Train')
     if te_scores is not None:
         # plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', phase='Val')
-        plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', phase='Test')
+        plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', alpha=0.5, phase='Test')
 
     # Set axes scale and labels
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
@@ -645,7 +666,8 @@ def power_law_func_3prm(x, alpha, beta, gamma):
     return alpha * np.power(x, beta) + gamma
     
     
-def fit_power_law_3prm(x, y, p0:list=[30, -0.3, 0.06]):
+# def fit_power_law_3prm(x, y, p0:list=[30, -0.3, 0.06]):
+def fit_power_law_3prm(x, y, p0:list=[30, -0.5, 0.06]):
     """ Fit learning curve data to power-law (3 params).
     TODO: How should we fit the data across multiple folds?
     This can be addressed using Bayesian methods (look at Bayesian linear regression).
@@ -661,7 +683,7 @@ def fit_power_law_3prm(x, y, p0:list=[30, -0.3, 0.06]):
 def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
                            xtick_scale:str='log2', ytick_scale:str='log2',
                            xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
-                           label:str='Data', ax=None):
+                           marker='.', color=None, alpha=0.7,  label:str='Data', ax=None):
     
     """ This function takes train set size in x and score in y, and generates a learning curve plot.
     The power-law model is fitted to the learning curve data.
@@ -690,11 +712,12 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     if ax is None: fig, ax = plt.subplots(figsize=figsize)
     
     # Plot raw data
-    # ax.plot(x, y, '.-', color=None, label=label);
-    ax.plot(x, y, '.', color=None, label=label);
+    p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, alpha=alpha, label=label);
+    c = p[0].get_color()
 
     # Plot fit
-    if plot_fit: ax.plot(x, yfit, '--', color=None, label=f'{label} fit (RMSE: {rmse:.7f})');    
+    # if plot_fit: ax.plot(x, yfit, '--', color=fit_color, label=f'{label} fit (RMSE: {rmse:.7f})');    
+    if plot_fit: ax.plot(x, yfit, '--', color=c, label=f'{label} fit (RMSE: {rmse:.7f})');    
         
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
     basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
@@ -726,7 +749,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     # ax.set_title(r"$\varepsilon_{mae}(m) = \alpha m^{\beta} + \gamma$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}, $\gamma$={power_law_params['gamma']:.2f}");
     if ylim is not None: ax.set_ylim(ylim)
     if xlim is not None: ax.set_ylim(xlim)
-    if title is None: title='Learning curve (power-law)'
+    if title is None: title='Learning Curve (power-law)'
     ax.set_title(title)
     
     # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
@@ -825,7 +848,7 @@ def lrn_crv_power_law_extrapolate(x, y, m0:int,
     # ax.set_title(r"$\varepsilon_{mae}(m) = \alpha m^{\beta} + \gamma$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}, $\gamma$={power_law_params['gamma']:.2f}");
     if ylim is not None: ax.set_ylim(ylim)
     if xlim is not None: ax.set_ylim(xlim)
-    if title is None: title='Learning curve (power-law)'
+    if title is None: title='Learning Curve (power-law)'
     ax.set_title(title)
     
     # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132

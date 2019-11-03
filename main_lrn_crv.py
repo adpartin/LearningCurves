@@ -36,6 +36,10 @@ filepath = Path(__file__).resolve().parent
 from classlogger import Logger
 from lrn_crv import LearningCurve
     
+    
+# Default settings
+OUTDIR = filepath / './'    
+    
         
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Generate learning curves.")
@@ -53,14 +57,14 @@ def parse_args(args):
     #         help='Other feature types (derived from cell lines and drugs). E.g.: cancer type, etc).') # ['cell_labels', 'drug_labels', 'ctype', 'csite', 'rna_clusters']
 
     # Data split methods
-    parser.add_argument('-cvm', '--cv_method', default='simple', type=str, choices=['simple', 'group'], help='CV split method (default: simple).')
+    # parser.add_argument('-cvm', '--cv_method', default='simple', type=str, choices=['simple', 'group'], help='CV split method (default: simple).')
     parser.add_argument('-cvf', '--cv_folds', default=1, type=str, help='Number cross-val folds (default: 1).')
     parser.add_argument('-cvf_arr', '--cv_folds_arr', nargs='+', type=int, default=None, help='The specific folds in the cross-val run (default: None).')
     
     # ML models
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
     parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str,
-                        choices=['lgb_reg', 'rf_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_layer_less', 'nn_reg_layer_more',
+                        choices=['lgb_reg', 'rf_reg', 'nn_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_layer_less', 'nn_reg_layer_more',
                                  'nn_reg_neuron_less', 'nn_reg_neuron_more'], help='ML model (default: lgb_reg).')
 
     # LightGBM params
@@ -80,7 +84,7 @@ def parse_args(args):
     # parser.add_argument('--initializer', default='he', type=str, choices=['he', 'glorot'], help='Keras initializer name (default: he).')
 
     parser.add_argument('--opt', default='sgd', type=str, choices=['sgd', 'adam'], help='Optimizer name (default: sgd).')
-    parser.add_argument('--lr', default='0.001', type=float, help='Learning rate of adaptive optimizers (default: 0.001).')
+    parser.add_argument('--lr', default='0.0001', type=float, help='Learning rate of adaptive optimizers (default: 0.001).')
 
     parser.add_argument('--clr_mode', default=None, type=str, choices=['trng1', 'trng2', 'exp'], help='CLR mode (default: trng1).')
     parser.add_argument('--clr_base_lr', type=float, default=1e-4, help='Base lr for cycle lr.')
@@ -104,18 +108,27 @@ def parse_args(args):
     return args
         
 
+def verify_dirpath(dirpath):
+    """ Verify the dirpath exists and contain the dataset. """
+    if dirpath is None:
+        sys.exit('Program terminated. You must specify a path to a data via the input argument -dp.')
+
+    dirpath = Path(dirpath)
+    assert dirpath.exists(), 'The specified dirpath {dirpath} (via argument -dp) was not found.'
+    return dirpath
+    
+    
 def create_outdir(outdir, args, src):
     t = datetime.now()
     t = [t.year, '-', t.month, '-', t.day, '_', 'h', t.hour, '-', 'm', t.minute]
     t = ''.join([str(i) for i in t])
     
-    l = [('cvf'+str(args['cv_folds']))] + args['cell_fea'] + args['drug_fea'] + [args['target_name']] 
+    l = [args['model_name']] + [('cvf'+str(args['cv_folds']))] + args['cell_fea'] + args['drug_fea'] + [args['target_name']] 
     if args['clr_mode'] is not None: l = [args['clr_mode']] + l
     if 'nn' in args['model_name']: l = [args['opt']] + l
                 
-    name_sffx = '.'.join( [src] + [args['model_name']] + l )
-    outdir = Path(outdir) / (name_sffx + '_' + t)
-    #outdir = Path(outdir) / name_sffx
+    fname = '.'.join( [src] + l ) + '_' + t
+    outdir = Path( src + '_trn' ) / ('split_on_' + args['split_on']) / fname
     os.makedirs(outdir)
     #os.makedirs(outdir, exist_ok=True)
     return outdir
@@ -159,52 +172,25 @@ def scale_fea(xdata, scaler_name='stnd', dtype=np.float32):
     
     
 def run(args):
-    dirpath = Path(args['dirpath'])
-    assert dirpath.exists(), 'You must specify the dirpath.'
+    dirpath = verify_dirpath(args['dirpath'])
 
-    target_name = args['target_name']
-    cv_folds = args['cv_folds']
-    cv_folds_arr = args['cv_folds_arr']
-
-    # Features 
-    cell_fea = args['cell_fea']
-    drug_fea = args['drug_fea']
-    # other_fea = args['other_fea']
-    # fea_list = cell_fea + drug_fea + other_fea    
-    fea_list = cell_fea + drug_fea
-
-    # NN params
-    epochs = args['epochs']
-    batch_size = args['batch_size']
-    dr_rate = args['dr_rate']
-    batchnorm = args['batchnorm']
-
-    # Optimizer
-    opt_name = args['opt']
-    lr = args['lr']
     clr_keras_kwargs = {'mode': args['clr_mode'], 'base_lr': args['clr_base_lr'],
                         'max_lr': args['clr_max_lr'], 'gamma': args['clr_gamma']}
 
-    # Learning curve
-    shard_step_scale = args['shard_step_scale']
-    min_shard = args['min_shard']
-    max_shard = args['max_shard']
-    n_shards = args['n_shards']
-    shards_arr = args['shards_arr']
-
-    # Other params
-    # framework = args['framework']
-    model_name = args['model_name']
-    n_jobs = args['n_jobs']
-
     # ML type ('reg' or 'cls')
-    if 'reg' in model_name:
+    if 'reg' in args['model_name']:
         mltype = 'reg'
-    elif 'cls' in model_name:
+    elif 'cls' in args['model_name']:
         mltype = 'cls'
     else:
         raise ValueError("model_name must contain 'reg' or 'cls'.")
 
+    # Find out which metadata field was used for hard split (cell, drug, or none)
+    f = [f for f in dirpath.glob('*args.txt')][0]
+    with open(f) as f: lines = f.readlines()
+    split_on = [l.split(':')[-1].strip() for l in lines if 'split_on' in l][0]
+    args['split_on'] = split_on.lower()
+        
     # Define metrics
     # metrics = {'r2': 'r2',
     #            'neg_mean_absolute_error': 'neg_mean_absolute_error', #sklearn.metrics.neg_mean_absolute_error,
@@ -218,26 +204,24 @@ def run(args):
     # -----------------------------------------------
     xdata = read_data_file( dirpath/'xdata.parquet', 'parquet' )
     meta  = read_data_file( dirpath/'meta.parquet', 'parquet' )
-    ydata = meta[[target_name]]
+    ydata = meta[[ args['target_name'] ]]
 
-    tr_id = read_data_file( dirpath/f'{cv_folds}fold_tr_id.csv' )
-    vl_id = read_data_file( dirpath/f'{cv_folds}fold_vl_id.csv' )
-    te_id = read_data_file( dirpath/f'{cv_folds}fold_te_id.csv' )
+    tr_id = read_data_file( dirpath/'{}fold_tr_id.csv'.format(args['cv_folds']) )
+    vl_id = read_data_file( dirpath/'{}fold_vl_id.csv'.format(args['cv_folds']) )
+    te_id = read_data_file( dirpath/'{}fold_te_id.csv'.format(args['cv_folds']) )
 
-    src = dirpath.name.split('_')[0]
+    src = str(dirpath.parent).split('/')[-1].split('.')[0]
 
 
     # -----------------------------------------------
     #       Create outdir and logger
     # -----------------------------------------------
-    outdir = Path( str(dirpath).split('_')[0] + '_trn' )
-    run_outdir = create_outdir(outdir, args, src)
-    lg = Logger(run_outdir/'logfile.log')
+    outdir = create_outdir(OUTDIR, args, src)
+    args['outdir'] = str(outdir)
+    lg = Logger(outdir/'logfile.log')
     lg.logger.info(f'File path: {filepath}')
     lg.logger.info(f'\n{pformat(args)}')
-
-    # Dump args to file
-    dump_dict(args, outpath=run_outdir/'args.txt')     
+    dump_dict(args, outpath=outdir/'args.txt') # dump args
     
     
     # -----------------------------------------------
@@ -249,39 +233,42 @@ def run(args):
     # -----------------------------------------------
     #      ML model configs
     # -----------------------------------------------
-    if model_name == 'lgb_reg':
+    if args['model_name'] == 'lgb_reg':
         framework = 'lightgbm'
         init_kwargs = {'n_estimators': args['gbm_trees'], 'max_depth': args['gbm_max_depth'],
                        'learning_rate': args['gbm_lr'], 'num_leaves': args['gbm_leaves'],
                        'n_jobs': args['n_jobs'], 'random_state': args['seed']}
         fit_kwargs = {'verbose': False}
-    elif model_name == 'rf_reg':
+
+    elif args['model_name'] == 'rf_reg':
         framework = 'sklearn'
         init_kwargs = {'n_jobs': args['n_jobs'], 'random_state': args['seed']}
         fit_kwargs = {}
-    elif model_name == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':
+
+    elif args['model_name'] == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':
         framework = 'keras'
-        init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': dr_rate, 'opt_name': opt_name, 'lr': lr, 'batchnorm': batchnorm, 'logger': lg.logger}
-        fit_kwargs = {'batch_size': batch_size, 'epochs': epochs, 'verbose': 1}  # 'validation_split': 0.1
+        init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': args['dr_rate'], 'opt_name': args['opt'],
+                       'lr': args['lr'], 'batchnorm': args['batchnorm'], 'logger': lg.logger}
+        fit_kwargs = {'batch_size': args['batch_size'], 'epochs': args['epochs'], 'verbose': 1}  # 'validation_split': 0.1
 
 
     # -----------------------------------------------
     #      Learning curve 
     # -----------------------------------------------
-    lg.logger.info('\n\n{}'.format('-' * 50))
+    lg.logger.info('\n\n{}'.format('-'*50))
     lg.logger.info(f'Learning curves {src} ...')
-    lg.logger.info('-' * 50)
+    lg.logger.info('-'*50)
 
-    lrn_crv_init_kwargs = { 'cv': None, 'cv_lists': (tr_id, vl_id, te_id), 'cv_folds_arr': cv_folds_arr,
-            'shard_step_scale': shard_step_scale, 'n_shards': n_shards, 'min_shard': min_shard, 'max_shard': max_shard,
-            'shards_arr': shards_arr, 'args': args, 'logger': lg.logger, 'outdir': run_outdir}
+    lrn_crv_init_kwargs = { 'cv': None, 'cv_lists': (tr_id, vl_id, te_id), 'cv_folds_arr': args['cv_folds_arr'],
+            'shard_step_scale': args['shard_step_scale'], 'n_shards': args['n_shards'], 'min_shard': args['min_shard'], 'max_shard': args['max_shard'],
+            'shards_arr': args['shards_arr'], 'args': args, 'logger': lg.logger, 'outdir': outdir}
 
-    lrn_crv_trn_kwargs = { 'framework': framework, 'mltype': mltype, 'model_name': model_name,
+    lrn_crv_trn_kwargs = { 'framework': framework, 'mltype': mltype, 'model_name': args['model_name'],
             'init_kwargs': init_kwargs, 'fit_kwargs': fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
-            'n_jobs': n_jobs, 'random_state': args['seed'] }
+            'n_jobs': args['n_jobs'], 'random_state': args['seed'] }
 
     t0 = time()
-    lc = LearningCurve( X=xdata, Y=ydata, **lrn_crv_init_kwargs )
+    lc = LearningCurve( X=xdata, Y=ydata, meta=meta, **lrn_crv_init_kwargs )
     lrn_crv_scores = lc.trn_learning_curve( **lrn_crv_trn_kwargs )
     lg.logger.info('Runtime: {:.1f} hrs'.format( (time()-t0)/3600) )
 
@@ -309,12 +296,12 @@ def run(args):
 
     # Dump results
     # lrn_curve_scores = utils.cv_scores_to_df(lrn_curve_scores, decimals=3, calc_stats=False) # this func won't work
-    # lrn_curve_scores.to_csv(os.path.join(run_outdir, 'lrn_curve_scores_auto.csv'), index=False)
+    # lrn_curve_scores.to_csv(os.path.join(outdir, 'lrn_curve_scores_auto.csv'), index=False)
 
     # Plot learning curves
     lrn_crv.plt_learning_curve(rslt=lrn_curve_scores, metric_name=metric_name,
         title='Learning curve (target: {}, data: {})'.format(target_name, tr_sources_name),
-        path=os.path.join(run_outdir, 'auto_learning_curve_' + target_name + '_' + metric_name + '.png'))
+        path=os.path.join(outdir, 'auto_learning_curve_' + target_name + '_' + metric_name + '.png'))
     """
     
     lg.kill_logger()

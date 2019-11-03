@@ -189,67 +189,6 @@ def plot_prfrm_metrics(history=None, logfile_path=None, title=None, name=None, s
     return history
 
 
-# def plot_metrics_from_logs(path_to_logs, title=None, name=None, skp_ep=0, outdir='.'):
-#     """ Plots keras training from logs.
-#     TODO: is this really necessary?? can this be replaced by plot_prfrm_metrics()?
-#     Args:
-#         path_to_logs : full path to log file
-#         skp_ep: number of epochs to skip when plotting metrics 
-#     """
-# #     history = pd.read_csv(path_to_logs, sep=',', header=0)
-    
-# #     all_metrics = list(history.columns)
-# #     pr_metrics = ['_'.join(m.split('_')[1:]) for m in all_metrics if 'val' in m]
-
-#     epochs = history['epoch'] + 1
-#     if len(epochs) <= skp_ep: skp_ep = 0
-#     eps = epochs[skp_ep:]
-#     hh = history
-    
-#     for p, m in enumerate(pr_metrics):
-#         metric_name = m
-#         metric_name_val = 'val_' + m
-
-#         y_tr = hh[metric_name][skp_ep:]
-#         y_vl = hh[metric_name_val][skp_ep:]
-        
-#         ymin = min(set(y_tr).union(y_vl))
-#         ymax = max(set(y_tr).union(y_vl))
-#         lim = (ymax - ymin) * 0.1
-#         ymin, ymax = ymin - lim, ymax + lim
-
-#         # Start figure
-#         fig, ax1 = plt.subplots()
-        
-#         # Plot metrics
-#         ax1.plot(eps, y_tr, color='b', marker='.', linestyle='-', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name))
-#         ax1.plot(eps, y_vl, color='r', marker='.', linestyle='--', linewidth=1, alpha=0.6, label=capitalize_metric(metric_name_val))        
-#         ax1.set_xlabel('Epoch')
-#         ax1.set_ylabel(capitalize_metric(metric_name))
-#         ax1.set_xlim([min(eps)-1, max(eps)+1])
-#         ax1.set_ylim([ymin, ymax])
-#         ax1.tick_params('y', colors='k')
-        
-#         ax1.grid(True)
-#         # plt.legend([metric_name, metric_name_val], loc='best')
-#         # medium.com/@samchaaa/how-to-plot-two-different-scales-on-one-plot-in-matplotlib-with-legend-46554ba5915a
-#         legend = ax1.legend(loc='best', prop={'size': 10})
-#         frame = legend.get_frame()
-#         frame.set_facecolor('0.95')
-#         if title is not None: plt.title(title)
-        
-#         # fig.tight_layout()
-#         if name is not None:
-#             fname = name + '_' + metric_name + '.png'
-#         else:
-#             fname = metric_name + '.png'
-#         figpath = Path(outdir) / fname
-#         plt.savefig(figpath, bbox_inches='tight')
-#         plt.close()
-        
-#     return history
-
-
 
 class BaseMLModel():
     """ A parent class with some general methods for children ML classes.
@@ -266,20 +205,19 @@ class BaseMLModel():
         return adj_r2
 
 
-    def build_dense_block(self, layers, inputs, batchnorm=True, name=''):
+    def build_dense_block(self, layers, inputs, batchnorm=True, name=None):
         """ This function only applicable to keras NNs. """
+        prfx = '' if name is None else f'{name}.'
         for i, l_size in enumerate(layers):
+            l_name = prfx + f'fc{i+1}.{l_size}'
             if i == 0:
-                x = Dense(l_size, kernel_initializer=self.initializer, name=f'{name}.fc{i+1}.{l_size}')(inputs)
+                x = Dense(l_size, kernel_initializer=self.initializer, name=l_name)(inputs)
             else:
-                x = Dense(l_size, kernel_initializer=self.initializer, name=f'{name}.fc{i+1}.{l_size}')(x)
-            
-            if batchnorm:
-                x = BatchNormalization(name=f'{name}.bn{i+1}')(x)
-                
-            x = Activation('relu', name=f'{name}.a{i+1}')(x)
-            x = Dropout(self.dr_rate, name=f'{name}.drp{i+1}.{self.dr_rate}')(x)        
-        return x
+                x = Dense(l_size, kernel_initializer=self.initializer, name=l_name)(x)
+            if batchnorm: x = BatchNormalization(name=prfx+f'bn{i+1}')(x)
+            x = Activation('relu', name=prfx+f'a{i+1}')(x)
+            x = Dropout(self.dr_rate, name=prfx+f'drp{i+1}.{self.dr_rate}')(x)        
+        return x      
     
     
     def get_optimizer(self):
@@ -316,13 +254,6 @@ class NN_REG0(BaseMLModel):
         model = Model(inputs=inputs, outputs=outputs)
         
         opt = self.get_optimizer()
-#         if self.opt_name == 'sgd':
-#             opt = SGD(lr=lr, momentum=0.9) # lr=1e-4
-#         elif self.opt_name == 'adam':
-#             opt = Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False) # lr=1e-3
-#         else:
-#             opt = SGD(lr=lr, momentum=0.9) # for clr # lr=1e-4
-
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model
         
@@ -350,13 +281,6 @@ class NN_REG1(BaseMLModel):
         model = Model(inputs=inputs, outputs=outputs)
         
         opt = self.get_optimizer()
-#         if self.opt_name == 'sgd':
-#             opt = SGD(lr=1e-4, momentum=0.9)
-#         elif self.opt_name == 'adam':
-#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-#         else:
-#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
-
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model        
 # ---------------------------------------------------------
@@ -385,13 +309,6 @@ class NN_REG_ATTN(BaseMLModel):
         model = Model(inputs=inputs, outputs=outputs)
         
         opt = self.get_optimizer()
-#         if self.opt_name == 'sgd':
-#             opt = SGD(lr=1e-4, momentum=0.9)
-#         elif self.opt_name == 'adam':
-#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-#         else:
-#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
-
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model        
         
@@ -419,13 +336,6 @@ class NN_REG_NEURON_LESS(BaseMLModel):
         model = Model(inputs=inputs, outputs=outputs)
         
         opt = self.get_optimizer()
-#         if self.opt_name == 'sgd':
-#             opt = SGD(lr=1e-4, momentum=0.9)
-#         elif self.opt_name == 'adam':
-#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-#         else:
-#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
-
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model 
         
@@ -452,13 +362,6 @@ class NN_REG_NEURON_MORE(BaseMLModel):
         model = Model(inputs=inputs, outputs=outputs)
         
         opt = self.get_optimizer()
-#         if self.opt_name == 'sgd':
-#             opt = SGD(lr=1e-4, momentum=0.9)
-#         elif self.opt_name == 'adam':
-#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-#         else:
-#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
-
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model            
 # ---------------------------------------------------------
@@ -487,13 +390,6 @@ class NN_REG_LAYER_LESS(BaseMLModel):
         model = Model(inputs=inputs, outputs=outputs)
         
         opt = self.get_optimizer()
-#         if self.opt_name == 'sgd':
-#             opt = SGD(lr=1e-4, momentum=0.9)
-#         elif self.opt_name == 'adam':
-#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-#         else:
-#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
-
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model 
         
@@ -519,13 +415,6 @@ class NN_REG_LAYER_MORE(BaseMLModel):
         model = Model(inputs=inputs, outputs=outputs)
         
         opt = self.get_optimizer()
-#         if self.opt_name == 'sgd':
-#             opt = SGD(lr=1e-4, momentum=0.9)
-#         elif self.opt_name == 'adam':
-#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-#         else:
-#             opt = SGD(lr=1e-4, momentum=0.9) # for clr
-
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model         
 # ---------------------------------------------------------
