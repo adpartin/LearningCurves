@@ -238,9 +238,9 @@ def run(args):
     vl_id = idx_vec_[vl_id] # adjust the indices!
     
     # Dump tr, vl, te indices
-    np.savetxt(outdir/'1fold_tr_id.txt', tr_id.reshape(-1,1), fmt='%d', delimiter='', newline='\n')
-    np.savetxt(outdir/'1fold_vl_id.txt', vl_id.reshape(-1,1), fmt='%d', delimiter='', newline='\n')
-    np.savetxt(outdir/'1fold_te_id.txt', te_id.reshape(-1,1), fmt='%d', delimiter='', newline='\n')
+    np.savetxt(outdir/'1fold_tr_id.csv', tr_id.reshape(-1,1), fmt='%d', delimiter='', newline='\n')
+    np.savetxt(outdir/'1fold_vl_id.csv', vl_id.reshape(-1,1), fmt='%d', delimiter='', newline='\n')
+    np.savetxt(outdir/'1fold_te_id.csv', te_id.reshape(-1,1), fmt='%d', delimiter='', newline='\n')
     
     lg.logger.info('Train samples {} ({:.2f}%)'.format( len(tr_id), 100*len(tr_id)/xdata.shape[0] ))
     lg.logger.info('Val   samples {} ({:.2f}%)'.format( len(vl_id), 100*len(vl_id)/xdata.shape[0] ))

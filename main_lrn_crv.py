@@ -74,6 +74,9 @@ def parse_args(args):
     parser.add_argument('--gbm_lr', default=0.1, type=float, help='Boosting learning rate (default: 0.1).')
     parser.add_argument('--gbm_leaves', default=31, type=int, help='Maximum tree leaves for base learners (default: 31).')
     
+    # Random Forest params
+    parser.add_argument('--rf_trees', default=100, type=int, help='Number of trees (default: 100).')   
+    
     # NN hyper_params
     parser.add_argument('-ep', '--epochs', default=200, type=int, help='Number of epochs (default: 200).')
     parser.add_argument('--batch_size', default=32, type=int, help='Batch size (default: 32).')
@@ -242,7 +245,7 @@ def run(args):
 
     elif args['model_name'] == 'rf_reg':
         framework = 'sklearn'
-        init_kwargs = {'n_jobs': args['n_jobs'], 'random_state': args['seed']}
+        init_kwargs = {'n_estimators': args['rf_trees'], 'n_jobs': args['n_jobs'], 'random_state': args['seed']}
         fit_kwargs = {}
 
     elif args['model_name'] == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':

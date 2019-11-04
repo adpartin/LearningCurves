@@ -555,7 +555,7 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
         # vl = aa[aa['set']=='vl']
         te = aa[aa['set']=='te']
 
-        tr = tr[[c for c in tr.columns if 'fold' in c]]
+        tr = tr[[c for c in tr. columns if 'fold' in c]]
         # vl = vl[[c for c in vl.columns if 'fold' in c]]
         te = te[[c for c in te.columns if 'fold' in c]]
         # tr = tr.iloc[:, -cv_folds:]
@@ -618,7 +618,7 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     def plot_single_crv(tr_shards, scores, ax, phase, color=None):
         scores_mean = np.mean(scores, axis=1)
         scores_std  = np.std( scores, axis=1)
-        ax.plot(tr_shards, scores_mean, '.-', color=color, label=f'{phase} Score')
+        ax.plot(tr_shards, scores_mean, '.-', color=color, alpha=0.5, label=f'{phase} Score')
         ax.fill_between(tr_shards, scores_mean - scores_std, scores_mean + scores_std, alpha=0.1, color=color)
 
     # Plot learning curves
@@ -626,10 +626,9 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     if ax is None: fig, ax = plt.subplots(figsize=figsize)
         
     if tr_scores is not None:
-        plot_single_crv(tr_shards, scores=tr_scores, ax=ax, color='b', alpha=0.5, phase='Train')
+        plot_single_crv(tr_shards, scores=tr_scores, ax=ax, color='b', phase='Train')
     if te_scores is not None:
-        # plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', phase='Val')
-        plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', alpha=0.5, phase='Test')
+        plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', phase='Test')
 
     # Set axes scale and labels
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
