@@ -116,13 +116,15 @@ def build_file_basename(args):
 def build_filename(args):
     # return "{}.{}".format(build_file_basename(args), args.format) # (ap) commented
     # (ap) added
-    if args.n_top > 200:
+    if args.top_n > 200:
         src = '' if args.src is None else '_'.join(args.src)
         fname = "tidy.{}.res_{}.cf_{}.dd_{}{}".format(
                 src, args.response_type, args.cell_feature, args.drug_descriptor, '.labled' if args.labels else '')
     else:
+        src = str(args.top_n)
         fname = "tidy.top{}.{}.res_{}.cf_{}.dd_{}{}".format(
                 args.top_n, src, args.response_type, args.cell_feature, args.drug_descriptor, '.labled' if args.labels else '')
+    return fname
         
 
 def build_dataframe(args):
@@ -133,9 +135,9 @@ def build_dataframe(args):
     # outdir = Path('top' + str(args.top_n) + sffx + '_data')
     sffx = '' if args.src is None else '_'.join(args.src)
     if args.top_n < 200:
-        outdir = Path('top' + str(args.top_n) + sffx + '_data_seed' + str(args.seed))
+        outdir = Path('top' + str(args.top_n) + sffx)
     else:
-        outdir = Path(sffx + '_data_seed' + str(args.seed))
+        outdir = Path(sffx)
     os.makedirs(outdir, exist_ok=True)    
     lg = Logger(outdir/'logfile.log')
     lg.logger.info(f'File path: {filepath}')
@@ -269,8 +271,8 @@ def build_dataframe(args):
     lg.logger.info("\nDataframe is built with total {} rows.".format(len(df_final)))
 
     # (ap) Shuffle
-    lg.logger.info("Shuffle final df.")
-    df_final = df_final.sample(frac=1.0, random_state=args.seed).reset_index(drop=True)
+    # lg.logger.info("Shuffle final df.")
+    # df_final = df_final.sample(frac=1.0, random_state=args.seed).reset_index(drop=True)
     lg.logger.info(df_final.groupby('SOURCE').agg({'CELL': 'nunique', 'DRUG': 'nunique'}).reset_index()) # (ap)
     
     save_filename = build_filename(args)
@@ -280,11 +282,11 @@ def build_dataframe(args):
     if args.format == 'feather':
         df_final.to_feather(save_filename)
     elif args.format == 'csv':
-        df_final.to_csv(save_filename, float_format='%g', index=False)
+        df_final.to_csv(str(save_filename) + '.csv', float_format='%g', index=False)
     elif args.format == 'tsv':
         df_final.to_csv(save_filename, sep='\t', float_format='%g', index=False)
     elif args.format == 'parquet':
-        df_final.to_parquet(save_filename, index=False)
+        df_final.to_parquet(str(save_filename) + '.parquet', index=False)
     elif args.format == 'hdf5':
         df_cl.to_csv(build_file_basename(args) + '_cellline.txt', header=False, index=False)
         df_drugs.to_csv(build_file_basename(args) + '_drug.txt', header=False, index=False)

@@ -185,7 +185,9 @@ class LearningCurve():
         else:
             # Fixed spacing
             if self.max_shard is None:
-                self.max_shard = len(self.tr_dct[0])
+                # self.max_shard = len(self.tr_dct[0])
+                key = list(self.tr_dct.keys())[0]
+                self.max_shard = len(self.tr_dct[key])
                 # if self.cv_folds == 1:
                 #     self.max_shard = int( (1 - self.vl_size - self.te_size) * self.X.shape[0] )
                 # else: 
@@ -332,6 +334,9 @@ class LearningCurve():
                     pass
                 else:
                     raise ValueError(f'Framework {self.framework} is not supported.')
+                    
+                if model is None:
+                    continue # sometimes keras fails to train a model (evaluates to nan)
 
                 # Save plot of target distribution
                 plot_hist(ytr_sub, var_name=f'Target (Train size={tr_sz})', fit=None, bins=100, path=trn_outdir/'target_hist_tr.png')
@@ -456,7 +461,11 @@ class LearningCurve():
 
         # Load the best model (https://github.com/keras-team/keras/issues/5916)
         # model = keras.models.load_model(str(trn_outdir/'model_best.h5'), custom_objects={'r2_krs': ml_models.r2_krs})
-        model = keras.models.load_model( str(trn_outdir/'model_best.h5') )
+        model_path = trn_outdir/'model_best.h5'
+        if model_path.exists():
+            model = keras.models.load_model( str(model_path) )
+        else:
+            model = None
         return model, trn_outdir, runtime
 
 
@@ -513,7 +522,7 @@ class LearningCurve():
 
 
 def define_keras_callbacks(outdir):
-    checkpointer = ModelCheckpoint(str(outdir/'model_best.h5'), verbose=0, save_weights_only=False, save_best_only=True)
+    checkpointer = ModelCheckpoint(str(outdir/'model_best.h5'), monitor='val_loss', verbose=0, save_weights_only=False, save_best_only=True)
     csv_logger = CSVLogger(outdir/'training.log')
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.75, patience=20, verbose=1, mode='auto',
                                   min_delta=0.0001, cooldown=3, min_lr=0.000000001)
@@ -708,6 +717,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
 
     # Init figure
     fontsize = 13
+    legend_fontsize = 10
     if ax is None: fig, ax = plt.subplots(figsize=figsize)
     
     # Plot raw data
@@ -715,8 +725,10 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     c = p[0].get_color()
 
     # Plot fit
-    # if plot_fit: ax.plot(x, yfit, '--', color=fit_color, label=f'{label} fit (RMSE: {rmse:.7f})');    
-    if plot_fit: ax.plot(x, yfit, '--', color=c, label=f'{label} fit (RMSE: {rmse:.7f})');    
+    # eq = r"e(m)={:.2f}$m^{:.2f}$ + {:.2f}".format(power_law_params['alpha'], power_law_params['beta'], power_law_params['gamma'])
+    label_ = '{} fit; RMSE={:.4f}; a={:.2f}; b={:.2f}'.format(label, rmse, power_law_params['alpha'], power_law_params['beta'])
+    # if plot_fit: ax.plot(x, yfit, '--', color=c, label=f'{label} fit; RMSE={rmse:.4f}; ' + eq);
+    if plot_fit: ax.plot(x, yfit, '--', color=c, label=label_);
         
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
     basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
@@ -733,10 +745,9 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     
     # Add equation (text) on the plot
     # matplotlib.org/3.1.1/gallery/text_labels_and_annotations/usetex_demo.html#sphx-glr-gallery-text-labels-and-annotations-usetex-demo-py
-    # eq = r"$\varepsilon_{mae}(m) = \alpha m^{\beta} + \gamma$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}, $\gamma$={power_law_params['gamma']:.2f}"
-    # eq = rf"$\varepsilon(m) = {power_law_params['alpha']:.2f} m^{power_law_params['beta']:.2f} + {power_law_params['gamma']:.2f}$" # TODO: make this work    
     
-    eq = r"$\varepsilon(m) = \alpha m^{\beta}$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}"
+    # eq = r"$\varepsilon(m) = \alpha m^{\beta}$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}"
+    eq = None
     # xloc = 2.0 * x.min()
     xloc = x.min() + 0.01*(x.max() - x.min())
     yloc = y.min() + 0.9*(y.max() - y.min())
@@ -752,7 +763,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     ax.set_title(title)
     
     # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
-    ax.legend(frameon=True, fontsize=fontsize, bbox_to_anchor=(1.04, 1), loc='upper left')
+    ax.legend(frameon=True, fontsize=legend_fontsize, bbox_to_anchor=(1.02, 1), loc='upper left')
     ax.grid(True)
     # return fig, ax, power_law_params
     return ax, power_law_params

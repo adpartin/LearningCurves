@@ -102,6 +102,10 @@ def load_rsp(filename, logger, args):
         rsp = rsp.loc[~id_drop,:]
         logger.info(f'Dropped {sum(id_drop)} rsp data points.')
 
+    logger.info(f'rsp.shape {rsp.shape}')
+    groupby_src_and_print(rsp, logger=logger)        
+        
+    logger.info('\nExtract specific sources.')
     rsp['SOURCE'] = rsp['SOURCE'].apply(lambda x: x.lower())
     rsp.replace([np.inf, -np.inf], value=np.nan, inplace=True) # Replace -inf and inf with nan
 
@@ -153,7 +157,7 @@ def load_dsc(filename, logger, float_type=np.float32, impute=True):
     # dsc.nunique(dropna=True).value_counts()
     # dsc.nunique(dropna=True).sort_values()
     logger.info('Drop descriptors with too many NA values ...')
-    plot_dsc_na_dist(dsc=dsc, savepath=args['outdir']/'dsc_hist_ratio_of_na.png')
+    plot_dsc_na_dist(dsc=dsc, savepath=Path(args['outdir'])/'dsc_hist_ratio_of_na.png')
     dsc = dropna(dsc, axis=1, th=args['dropna_th'])
     logger.info(f'dsc.shape {dsc.shape}')
     # dsc.isna().sum().sort_values(ascending=False)
@@ -287,7 +291,7 @@ prfx_dtypes = {'rna': np.float32, 'cnv': np.int8, 'snp': np.int8,
 #     Create outdir and logger
 # -----------------------------------------------
 outdir = create_outdir(OUTDIR, args)
-args['outdir'] = outdir
+args['outdir'] = str(outdir)
 lg = Logger(outdir/'create_tidy_logfile.log')
 lg.logger.info(f'File path: {filepath}')
 lg.logger.info(f'\n{pformat(args)}')
