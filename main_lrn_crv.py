@@ -191,9 +191,11 @@ def run(args):
     # Find out which metadata field was used for hard split (cell, drug, or none)
     f = [f for f in dirpath.glob('*args.txt')][0]
     with open(f) as f: lines = f.readlines()
-    split_on = [l.split(':')[-1].strip() for l in lines if 'split_on' in l][0]
-    args['split_on'] = split_on.lower()
-        
+    def find_arg(lines, arg):
+        return [l.split(':')[-1].strip() for l in lines if arg+':' in l][0]
+    args['split_on'] = find_arg(lines, 'split_on').lower()
+    args['split_seed'] = find_arg(lines, 'seed').lower()
+
     # Define metrics
     # metrics = {'r2': 'r2',
     #            'neg_mean_absolute_error': 'neg_mean_absolute_error', #sklearn.metrics.neg_mean_absolute_error,
@@ -259,7 +261,7 @@ def run(args):
     #      Learning curve 
     # -----------------------------------------------
     lg.logger.info('\n\n{}'.format('-'*50))
-    lg.logger.info(f'Learning curves {src} ...')
+    lg.logger.info(f'Learning Curves {src} ...')
     lg.logger.info('-'*50)
 
     lrn_crv_init_kwargs = { 'cv': None, 'cv_lists': (tr_id, vl_id, te_id), 'cv_folds_arr': args['cv_folds_arr'],

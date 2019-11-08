@@ -95,8 +95,8 @@ class LearningCurve():
                 
             args : command line args
         """
-        self.X = pd.DataFrame(X).values
-        self.Y = pd.DataFrame(Y).values
+        self.X = pd.DataFrame(X)
+        self.Y = pd.DataFrame(Y)
         self.meta = pd.DataFrame(meta)
         self.cv = cv
         self.cv_lists = cv_lists
@@ -133,12 +133,14 @@ class LearningCurve():
 
             # Calc the split ratio if cv=1
             if self.cv_folds == 1:
-                self.vl_size = vl_id.shape[0]/(tr_id.shape[0] + vl_id.shape[0] + te_id.shape[0])
-                self.te_size = te_id.shape[0]/(tr_id.shape[0] + vl_id.shape[0] + te_id.shape[0])
+                total_samples = tr_id.shape[0] + vl_id.shape[0] + te_id.shape[0]
+                self.vl_size = vl_id.shape[0] / total_samples
+                self.te_size = te_id.shape[0] / total_samples
 
             if self.cv_folds_arr is None: self.cv_folds_arr = [f+1 for f in range(self.cv_folds)]
                 
             for fold in range(tr_id.shape[1]):
+                # cv_folds_arr contains the specific folds we wish to process
                 if fold+1 in self.cv_folds_arr:
                     tr_dct[fold] = tr_id.iloc[:, fold].dropna().values.astype(int).tolist()
                     vl_dct[fold] = vl_id.iloc[:, fold].dropna().values.astype(int).tolist()
@@ -148,6 +150,8 @@ class LearningCurve():
         # Generate folds on the fly if no pre-defined folds were passed
         # TODO: this option won't work after we added test set in addition to train and val sets.
         else:
+            raise ValueError('This option is not supported.')
+            """
             if isinstance(self.cv, int):
                 self.cv_folds = self.cv
                 self.cv = KFold(n_splits=self.cv_folds, shuffle=False, random_state=self.random_state)
@@ -169,6 +173,7 @@ class LearningCurve():
             for fold, (tr_vec, vl_vec) in enumerate(splitter):
                 tr_dct[fold] = tr_vec
                 vl_dct[fold] = vl_vec
+            """
 
         # Keep dicts
         self.tr_dct = tr_dct
@@ -185,13 +190,8 @@ class LearningCurve():
         else:
             # Fixed spacing
             if self.max_shard is None:
-                # self.max_shard = len(self.tr_dct[0])
                 key = list(self.tr_dct.keys())[0]
                 self.max_shard = len(self.tr_dct[key])
-                # if self.cv_folds == 1:
-                #     self.max_shard = int( (1 - self.vl_size - self.te_size) * self.X.shape[0] )
-                # else: 
-                #     self.max_shard = int( (self.cv_folds-1)/self.cv_folds * self.X.shape[0] )
 
             # Full vector of shards
             # (we create a vector with very large values so that we later truncate it with max_shard)
@@ -224,8 +224,9 @@ class LearningCurve():
                 m.append(self.max_shard)
             else:
                 m = list(m[:idx_max+1])  # all values INcluding the last one
-                m.append(self.max_shard) # TODO: should this be also added??
-                # If the diff btw max_samples and the latest shards (m[-1] - m[-2]) is "too small", then remove max_samples from the possible shards.
+                m.append(self.max_shard) # TODO: should we append this??
+                # If the diff btw max_samples and the latest shards (m[-1] - m[-2]) is "too small",
+                # then remove max_samples from the possible shards.
                 if 0.5*m[-3] > (m[-1] - m[-2]): m = m[:-1] # heuristic to drop the last shard
 
             self.tr_shards = m
@@ -237,7 +238,7 @@ class LearningCurve():
     def trn_learning_curve(self,
             framework: str='lightgbm',
             mltype: str='reg',
-            model_name: str='lgb_reg', # TODO! this is redundent
+            model_name: str='lgb_reg',
             init_kwargs: dict={},
             fit_kwargs: dict={},
             clr_keras_kwargs: dict={},
@@ -249,7 +250,7 @@ class LearningCurve():
         Args:
             framework : ml framework (keras, lightgbm, or sklearn)
             mltype : type to ml problem (reg or cls)
-            init_kwargs : dict of parameters that initialize the estimator
+            init_kwargs : dict of parameters that initializes the estimator
             fit_kwargs : dict of parameters to the estimator's fit() method
             clr_keras_kwargs : 
             metrics : allow to pass a string of metrics  TODO!
@@ -273,29 +274,21 @@ class LearningCurve():
         runtime_records = []
 
         # CV loop
-        for fold, (tr_k, vl_k, te_k) in enumerate(zip( self.tr_dct.keys(), self.vl_dct.keys(), self.te_dct.keys() )):
-            fold = fold + 1
-            if self.logger is not None: self.logger.info(f'Fold {fold}/{self.cv_folds}')
+        # for fold, fold_num in enumerate(self.tr_dct.keys()):
+        for fold_num in self.tr_dct.keys():
+            # fold = fold + 1
+            # if self.logger is not None: self.logger.info(f'Fold {fold}/{self.cv_folds}')
+            if self.logger is not None: self.logger.info(f'Fold {fold_num} out of {list(self.tr_dct.keys())}')    
 
             # Get the indices for this fold
-            tr_id = self.tr_dct[tr_k]
-            vl_id = self.vl_dct[vl_k]
-            te_id = self.te_dct[te_k]
-
-            # Samples from this dataset are sequentially sampled for TRAIN
-            xtr = self.X[tr_id, :]
-            # ytr = self.Y[tr_id, :]
-            ytr = np.squeeze(self.Y[tr_id, :])        
-
-            # A fixed set of VAL samples for the current CV split
-            xvl = self.X[vl_id, :]
-            yvl = np.squeeze(self.Y[vl_id, :])        
-            mvl = self.meta.loc[vl_id, :]
-
-            # A fixed set of TEST samples for the current CV split
-            xte = self.X[te_id, :]
-            yte = np.squeeze(self.Y[te_id, :])        
-            mte = self.meta.loc[te_id, :]
+            tr_id = self.tr_dct[fold_num]
+            vl_id = self.vl_dct[fold_num]
+            te_id = self.te_dct[fold_num]
+            
+            # Extract Training set T, Validation set V, and Test set E
+            xtr, ytr, mtr = self.get_data_by_id(tr_id) # samples from xtr are sequentially sampled for TRAIN
+            xvl, yvl, mvl = self.get_data_by_id(vl_id) # fixed set of VAL samples for the current CV split
+            xte, yte, mte = self.get_data_by_id(te_id) # fixed set of TEST samples for the current CV split
 
             # Shards loop (iterate across the dataset sizes and train)
             """
@@ -309,27 +302,28 @@ class LearningCurve():
                 if self.logger: self.logger.info(f'\tTrain size: {tr_sz} ({i+1}/{len(self.tr_shards)})')   
 
                 # Sequentially get a subset of samples (the input dataset X must be shuffled)
-                xtr_sub = xtr[idx[:tr_sz], :]
-                # ytr_sub = np.squeeze(ytr[idx[:tr_sz], :])
-                ytr_sub = ytr[idx[:tr_sz]]
-                mtr_sub = self.meta.loc[idx[:tr_sz], :]
+                # xtr_sub = xtr[idx[:tr_sz], :]
+                # ytr_sub = ytr[idx[:tr_sz]]  # np.squeeze(ytr[idx[:tr_sz], :])
+                # mtr_sub = mtr[idx[:tr_sz], :]
+                xtr_sub = xtr.loc[idx[:tr_sz], :]
+                ytr_sub = ytr.loc[idx[:tr_sz]]  # np.squeeze(ytr[idx[:tr_sz], :])
+                mtr_sub = mtr.loc[idx[:tr_sz], :]
                 
                 # Get the estimator
                 estimator = ml_models.get_model(self.model_name, init_kwargs=self.init_kwargs)
                 model = estimator.model
                 
                 # Train
-                # self.val_split = 0 # 0.1 # used for early stopping
-                #self.eval_frac = 0.1 # 0.1 # used for early stopping
-                #eval_samples = int(self.eval_frac * xvl.shape[0])
-                #eval_set = (xvl[:eval_samples, :], yvl[:eval_samples]) # we don't random sample; the same eval_set is used for early stopping
                 eval_set = (xvl, yvl)
                 if self.framework=='lightgbm':
-                    model, trn_outdir, runtime = self.trn_lgbm_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
+                    model, trn_outdir, runtime = self.trn_lgbm_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub,
+                                                                     fold=fold_num, tr_sz=tr_sz, eval_set=eval_set)
                 elif self.framework=='sklearn':
-                    model, trn_outdir, runtime = self.trn_sklearn_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=None)
+                    model, trn_outdir, runtime = self.trn_sklearn_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub,
+                                                                        fold=fold_num, tr_sz=tr_sz, eval_set=None)
                 elif self.framework=='keras':
-                    model, trn_outdir, runtime = self.trn_keras_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub, fold=fold, tr_sz=tr_sz, eval_set=eval_set)
+                    model, trn_outdir, runtime = self.trn_keras_model(model=model, xtr_sub=xtr_sub, ytr_sub=ytr_sub,
+                                                                      fold=fold_num, tr_sz=tr_sz, eval_set=eval_set)
                 elif self.framework=='pytorch':
                     pass
                 else:
@@ -339,52 +333,41 @@ class LearningCurve():
                     continue # sometimes keras fails to train a model (evaluates to nan)
 
                 # Save plot of target distribution
-                plot_hist(ytr_sub, var_name=f'Target (Train size={tr_sz})', fit=None, bins=100, path=trn_outdir/'target_hist_tr.png')
-                plot_hist(yvl, var_name=f'Target (Val size={len(yvl)})', fit=None, bins=100, path=trn_outdir/'target_hist_vl.png')
-                plot_hist(yte, var_name=f'Target (Test size={len(yte)})', fit=None, bins=100, path=trn_outdir/'target_hist_te.png')
+                plot_hist(ytr_sub, var_name=f'Target (Train size={tr_sz})',   path=trn_outdir/'target_hist_tr.png')
+                plot_hist(yvl,     var_name=f'Target (Val size={len(yvl)})',  path=trn_outdir/'target_hist_vl.png')
+                plot_hist(yte,     var_name=f'Target (Test size={len(yte)})', path=trn_outdir/'target_hist_te.png')
                     
-                # Calc preds and scores TODO: dump preds
+                # Calc preds and scores
                 # ... training set
                 y_pred, y_true = calc_preds(model, x=xtr_sub, y=ytr_sub, mltype=self.mltype)
                 tr_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                tr_scores['y_avg_true'] = np.mean(y_true)
-                tr_scores['y_avg_pred'] = np.mean(y_pred)
-                # mtr_sub.insert(loc=mtr_sub.shape[-1]-1, column='ytr_true', value=y_true, allow_duplicates=False)
-                # mtr_sub.insert(loc=mtr_sub.shape[-1]-1, column='ytr_pred', value=y_pred, allow_duplicates=False)
-                # cc = pd.concat([mtr_sub, preds], axis=1)
+                dump_preds(y_true, y_pred, meta=mtr_sub, outdir=trn_outdir)
                 # ... val set
                 y_pred, y_true = calc_preds(model, x=xvl, y=yvl, mltype=self.mltype)
                 vl_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                vl_scores['y_avg_true'] = np.mean(y_true)
-                vl_scores['y_avg_pred'] = np.mean(y_pred)                
+                dump_preds(y_true, y_pred, meta=mvl, outdir=trn_outdir)
                 # ... test set
                 y_pred, y_true = calc_preds(model, x=xte, y=yte, mltype=self.mltype)
                 te_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                te_scores['y_avg_true'] = np.mean(y_true)
-                te_scores['y_avg_pred'] = np.mean(y_pred)                
-                del estimator, model
+                dump_preds(y_true, y_pred, meta=mte, outdir=trn_outdir)
                 
-                # Save predictions (need to include metadata)
-                # TODO
-                pass
+                del estimator, model
 
                 # Store runtime
                 runtime_records.append((fold, tr_sz, runtime))
 
                 # Add metadata
-                # tr_scores['tr_set'] = True
+                def update_tmp():
                 tr_scores['set'] = 'tr'
-                tr_scores['fold'] = 'fold'+str(fold)
+                tr_scores['fold'] = 'fold'+str(fold_num)
                 tr_scores['tr_size'] = tr_sz
                 
-                # vl_scores['tr_set'] = False
                 vl_scores['set'] = 'vl'
-                vl_scores['fold'] = 'fold'+str(fold)
+                vl_scores['fold'] = 'fold'+str(fold_num)
                 vl_scores['tr_size'] = tr_sz
 
-                # te_scores['tr_set'] = False
                 te_scores['set'] = 'te'
-                te_scores['fold'] = 'fold'+str(fold)
+                te_scores['fold'] = 'fold'+str(fold_num)
                 te_scores['tr_size'] = tr_sz
 
                 # Append scores (dicts)
@@ -393,14 +376,13 @@ class LearningCurve():
                 te_scores_all.append(te_scores)
 
                 # Dump intermediate scores
-                # TODO: test this!
                 scores_tmp = pd.concat([scores_to_df([tr_scores]), scores_to_df([vl_scores]), scores_to_df([te_scores])], axis=0)
                 scores_tmp.to_csv( trn_outdir / ('scores_tmp.csv'), index=False )
                 del trn_outdir, scores_tmp
                 
             # Dump intermediate results (this is useful if the run terminates before run ends)
             scores_all_df_tmp = pd.concat([scores_to_df(tr_scores_all), scores_to_df(vl_scores_all), scores_to_df(te_scores_all)], axis=0)
-            scores_all_df_tmp.to_csv( self.outdir / ('_lrn_crv_scores_cv' + str(fold) + '.csv'), index=False )
+            scores_all_df_tmp.to_csv( self.outdir / ('_lrn_crv_scores_cv' + str(fold_num) + '.csv'), index=False )
 
         # Scores to df
         tr_scores_df = scores_to_df( tr_scores_all )
@@ -425,15 +407,24 @@ class LearningCurve():
             plot_runtime( runtime_df, outdir=self.outdir, xtick_scale='log2', ytick_scale='log2' )
 
         return scores_df
+    
+    
+    def get_data_by_id(self, idx):
+        """ Returns a tuple of (features (x), target (y), metadata (m))
+        for an input array of indices (idx). """
+        # x_data = self.X[idx, :]
+        # y_data = np.squeeze(self.Y[idx, :])        
+        # m_data = self.meta.loc[idx, :]
+        x_data = self.X.loc[idx, :].reset_index(drop=True)
+        y_data = np.squeeze(self.Y.loc[idx, :]).reset_index(drop=True)
+        m_data = self.meta.loc[idx, :].reset_index(drop=True)
+        return x_data, y_data, m_data
 
 
     def trn_keras_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
         """ Train and save Keras model. """
-        keras.utils.plot_model(model, to_file=self.outdir/'nn_model.png')
-
-        # Create output dir
-        trn_outdir = self.outdir / ('cv'+str(fold) + '_sz'+str(tr_sz))
-        os.makedirs(trn_outdir, exist_ok=False)
+        trn_outdir = self.create_trn_outdir(fold, tr_sz)
+        keras.utils.plot_model(model, to_file=self.outdir/'nn_model.png') # comment this when using Theta
         
         # Keras callbacks
         keras_callbacks = define_keras_callbacks(trn_outdir)
@@ -445,12 +436,7 @@ class LearningCurve():
         # Fit params
         fit_kwargs = self.fit_kwargs
         fit_kwargs['validation_data'] = eval_set
-        # fit_kwargs['validation_split'] = self.val_split
         fit_kwargs['callbacks'] = keras_callbacks
-
-        # (debug)
-        ytr_avg_true = np.mean(ytr_sub)
-        yvl_avg_pred = np.mean(eval_set[1])
         
         # Train model
         t0 = time()
@@ -471,17 +457,10 @@ class LearningCurve():
 
     def trn_lgbm_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
         """ Train and save LigthGBM model. """
-        # Create output dir
-        trn_outdir = self.outdir / ('cv'+str(fold) + '_sz'+str(tr_sz))
-        # os.makedirs(trn_outdir, exist_ok=False)
-        os.makedirs(trn_outdir, exist_ok=True)
-
-        # Get a subset of samples for validation for early stopping
+        trn_outdir = self.create_trn_outdir(fold, tr_sz)
+        
+        # Fit params
         fit_kwargs = self.fit_kwargs
-        # xtr_sub, xvl_sub, ytr_sub, yvl_sub = train_test_split(xtr_sub, ytr_sub, test_size=self.val_split)
-        # if xvl_sub_.shape[0] > 0:
-        #     fit_kwargs['eval_set'] = (xvl_sub, yvl_sub)
-        #     fit_kwargs['early_stopping_rounds'] = 10
         fit_kwargs['eval_set'] = eval_set
         fit_kwargs['early_stopping_rounds'] = 10
 
@@ -499,17 +478,10 @@ class LearningCurve():
     
     def trn_sklearn_model(self, model, xtr_sub, ytr_sub, fold, tr_sz, eval_set=None):
         """ Train and save sklearn model. """
-        # Create output dir
-        trn_outdir = self.outdir / ('cv'+str(fold) + '_sz'+str(tr_sz))
-        # os.makedirs(trn_outdir, exist_ok=False)
-        os.makedirs(trn_outdir, exist_ok=True)
-
-        # Get a subset of samples for validation for early stopping
+        trn_outdir = self.create_trn_outdir(fold, tr_sz)
+        
+        # Fit params
         fit_kwargs = self.fit_kwargs
-        # xtr_sub, xvl_sub, ytr_sub, yvl_sub = train_test_split(xtr_sub, ytr_sub, test_size=self.val_split)
-        # if xvl_sub_.shape[0] > 0:
-        #     fit_kwargs['eval_set'] = (xvl_sub, yvl_sub)
-        #     fit_kwargs['early_stopping_rounds'] = 10
 
         # Train and save model
         t0 = time()
@@ -517,6 +489,13 @@ class LearningCurve():
         runtime = (time() - t0)/60
         joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
         return model, trn_outdir, runtime
+    
+    
+    def create_trn_outdir(self, fold, tr_sz):
+        trn_outdir = self.outdir / ('cv'+str(fold) + '_sz'+str(tr_sz))
+        os.makedirs(trn_outdir, exist_ok=True)
+        return trn_outdir
+        
 # --------------------------------------------------------------------------------
 
 
@@ -528,6 +507,19 @@ def define_keras_callbacks(outdir):
                                   min_delta=0.0001, cooldown=3, min_lr=0.000000001)
     early_stop = EarlyStopping(monitor='val_loss', patience=50, verbose=1)
     return [checkpointer, csv_logger, early_stop, reduce_lr]
+
+
+def dump_preds(y_true, y_pred, meta=None, outdir='.'):
+    """ Dump prediction and true values, with optional with metadata. """
+    y_true = pd.Series(y_true, name='y_true')
+    y_pred = pd.Series(y_pred, name='y_pred')
+    if meta is not None:
+        preds = meta.copy()
+        preds.insert(loc=3, column='y_true', value=y_true.values)
+        preds.insert(loc=4, column='y_pred', value=y_pred.values)
+    else:
+        preds = pd.concat([y_true, y_pred], axis=1)
+    preds.to_csv(Path(outdir)/'preds.csv', index=False)
 
 
 def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear', ytick_scale='linear'):
@@ -558,8 +550,6 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
         aa = df[df['metric']==metric_name].reset_index(drop=True)
         aa.sort_values('tr_size', inplace=True)
 
-        # tr = aa[aa['tr_set']==True]
-        # vl = aa[aa['tr_set']==False]
         tr = aa[aa['set']=='tr']
         # vl = aa[aa['set']=='vl']
         te = aa[aa['set']=='te']
@@ -567,8 +557,6 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
         tr = tr[[c for c in tr. columns if 'fold' in c]]
         # vl = vl[[c for c in vl.columns if 'fold' in c]]
         te = te[[c for c in te.columns if 'fold' in c]]
-        # tr = tr.iloc[:, -cv_folds:]
-        # vl = vl.iloc[:, -cv_folds:]
 
         rslt = []
         rslt.append(tr_shards)
@@ -890,12 +878,9 @@ def plot_runtime(rt:pd.DataFrame, outdir:Path=None, figsize=(7,5),
     if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)
 
     ax.set_title('Runtime')
-    #ax.set_xlabel(f'Training Size', fontsize=fontsize)
-    #ax.set_ylabel(f'Training Time (minutes)', fontsize=fontsize)
     ax.legend(loc='best', frameon=True, fontsize=fontsize)
     ax.grid(True)
 
-    # Save fig
     if outdir is not None: plt.savefig(outdir/'runtime.png', bbox_inches='tight')
 
         
@@ -920,7 +905,7 @@ def reg_auroc_score():
 def calc_preds(model, x, y, mltype):
     """ Calc predictions. """
     if mltype == 'cls':    
-        if y.ndim > 1 and y.shape[1] > 1:
+        if (y.ndim > 1) and (y.shape[1] > 1):
             y_pred = model.predict_proba(x)
             y_pred = np.argmax(y_pred, axis=1)
             y_true = np.argmax(ydata, axis=1)
@@ -930,8 +915,8 @@ def calc_preds(model, x, y, mltype):
             y_true = y
             
     elif mltype == 'reg':
-        y_pred = model.predict(x)
-        y_true = y
+        y_pred = np.squeeze(model.predict(x))
+        y_true = np.squeeze(y)
 
     return y_pred, y_true
 
@@ -956,6 +941,9 @@ def calc_scores(y_true, y_pred, mltype, metrics=None):
         scores['mse'] = sklearn.metrics.mean_squared_error(y_true=y_true, y_pred=y_pred)
         scores['rmse'] = sqrt( sklearn.metrics.mean_squared_error(y_true=y_true, y_pred=y_pred) )
         # scores['auroc_reg'] = reg_auroc(y_true=y_true, y_pred=y_pred)
+        
+    scores['y_avg_true'] = np.mean(y_true)
+    scores['y_avg_pred'] = np.mean(y_pred)
 
     # # https://scikit-learn.org/stable/modules/model_evaluation.html
     # for metric_name, metric in metrics.items():
@@ -970,10 +958,8 @@ def calc_scores(y_true, y_pred, mltype, metrics=None):
 def scores_to_df(scores_all):
     """ (tricky commands) """
     df = pd.DataFrame(scores_all)
-    # df = df.melt(id_vars=['fold', 'tr_size', 'tr_set'])
     df = df.melt(id_vars=['fold', 'tr_size', 'set'])
     df = df.rename(columns={'variable': 'metric'})
-    # df = df.pivot_table(index=['metric', 'tr_size', 'tr_set'], columns=['fold'], values='value')
     df = df.pivot_table(index=['metric', 'tr_size', 'set'], columns=['fold'], values='value')
     df = df.reset_index(drop=False)
     df.columns.name = None
