@@ -311,14 +311,13 @@ def run(args):
     
     lg.kill_logger()
     del xdata, ydata
-    
-    print('Done.')
 
 
 def main(args):
     args = parse_args(args)
     args = vars(args)
     run(args)
+    print('Done.')
     
 
 if __name__ == '__main__':
