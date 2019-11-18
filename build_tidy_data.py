@@ -399,10 +399,10 @@ def run(args):
     fname = create_basename(args)
     t0 = time()
     if file_format == 'parquet':
-        fpath = outdir/(fname+'.parquet')
+        fpath = outdir/('data.'+fname+'.parquet')
         data.to_parquet(fpath)
     else:
-        fpath = outdir/'tidy_data.csv'
+        fpath = outdir/('data.'+fname+'.csv')
         data.to_csv(fpath, sep='\t')
     lg.logger.info('Save time: {:.1f} mins'.format( (time()-t0)/60) )
 

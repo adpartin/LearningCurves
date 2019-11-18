@@ -239,7 +239,7 @@ class NN_REG0(BaseMLModel):
     """
     model_name = 'nn_reg0'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
@@ -265,7 +265,7 @@ class NN_REG1(BaseMLModel):
     """
     model_name = 'nn_reg1'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
@@ -294,7 +294,7 @@ class NN_REG_ATTN(BaseMLModel):
     """
     model_name = 'nn_reg_attn'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
@@ -321,7 +321,7 @@ class NN_REG_NEURON_LESS(BaseMLModel):
     """
     model_name = 'nn_reg_neuron_less'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
@@ -347,7 +347,7 @@ class NN_REG_NEURON_MORE(BaseMLModel):
     """
     model_name = 'nn_reg_neuron_more'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
@@ -375,7 +375,7 @@ class NN_REG_LAYER_LESS(BaseMLModel):
     """
     model_name = 'nn_reg_layer_less'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
@@ -400,7 +400,7 @@ class NN_REG_LAYER_MORE(BaseMLModel):
     """
     model_name = 'nn_reg_layer_more'
 
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False, logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
         self.input_dim = input_dim
         self.dr_rate = dr_rate
         self.opt_name = opt_name
@@ -426,7 +426,7 @@ class LGBM_REGRESSOR(BaseMLModel):
     ml_objective = 'regression'
     model_name = 'lgb_reg'
 
-    # def __init__(self, n_estimators=100, eval_metric=['l2', 'l1'], n_jobs=1, random_state=None, logger=None):
+    # def __init__(self, n_estimators=100, eval_metric=['l2', 'l1'], n_jobs=1, random_state=None):
     def __init__(self, **kwargs):
         # TODO: use config file to set default parameters (like in candle)
         
@@ -450,9 +450,6 @@ class LGBM_REGRESSOR(BaseMLModel):
     #                    eval_set=eval_set,
     #                    **fit_params)
     #     self.train_runtime = time.time() - t0
-
-    #     if self.logger is not None:
-    #         self.logger.info('Train time: {:.2f} mins'.format(self.train_runtime/60))
 
 
     def dump_model(self, outdir='.'):
@@ -490,8 +487,7 @@ class RF_REGRESSOR(BaseMLModel):
                  max_depth=None, min_samples_split=2,
                  max_features='sqrt',
                  bootstrap=True, oob_score=True, verbose=0, 
-                 n_jobs=1, random_state=None,
-                 logger=None):               
+                 n_jobs=1, random_state=None):               
 
         self.model = RandomForestRegressor(
             n_estimators=n_estimators,

@@ -35,6 +35,8 @@ filepath = Path(__file__).resolve().parent
 # Utils
 from classlogger import Logger
 from lrn_crv import LearningCurve
+from plots import plot_hist, plot_runtime
+import lrn_crv_plot
     
     
 # Default settings
@@ -102,6 +104,9 @@ def parse_args(args):
     parser.add_argument('--n_shards', default=None, type=int, help='Number of shards (used only when shard_step_scale is `linear` (default: None).')
     parser.add_argument('--shards_arr', nargs='+', type=int, default=None, help='List of the actual shards in the learning curve plot (default: None).')
     
+    # HPs file
+    parser.add_argument('--hp_file', default=None, type=str, help='File containing hyperparameters for training (default: None).')
+    
     # Other
     parser.add_argument('--n_jobs', default=4, type=int, help='Default: 4.')
     parser.add_argument('--seed', default=0, type=int, help='Default: 0.')
@@ -117,7 +122,7 @@ def verify_dirpath(dirpath):
         sys.exit('Program terminated. You must specify a path to a data via the input argument -dp.')
 
     dirpath = Path(dirpath)
-    assert dirpath.exists(), 'The specified dirpath {dirpath} (via argument -dp) was not found.'
+    assert dirpath.exists(), 'The specified dirpath was not found: {dirpath}.'
     return dirpath
     
     
@@ -161,7 +166,7 @@ def read_data_file(fpath, file_format='csv'):
     
     
 def scale_fea(xdata, scaler_name='stnd', dtype=np.float32):
-    """ Returns the scaled dataframe. """
+    """ Returns the scaled dataframe of features. """
     if scaler_name is not None:
         if scaler_name == 'stnd':
             scaler = StandardScaler()
@@ -207,6 +212,7 @@ def run(args):
     # -----------------------------------------------
     #       Load data and pre-proc
     # -----------------------------------------------
+    # TODO: allow to pass the original dataframe and then split into x, y, m
     xdata = read_data_file( dirpath/'xdata.parquet', 'parquet' )
     meta  = read_data_file( dirpath/'meta.parquet', 'parquet' )
     ydata = meta[[ args['target_name'] ]]
@@ -222,11 +228,10 @@ def run(args):
     #       Create outdir and logger
     # -----------------------------------------------
     outdir = create_outdir(OUTDIR, args, src)
-    args['outdir'] = str(outdir)
+    args['outdir'] = outdir
     lg = Logger(outdir/'logfile.log')
     lg.logger.info(f'File path: {filepath}')
     lg.logger.info(f'\n{pformat(args)}')
-    dump_dict(args, outpath=outdir/'args.txt') # dump args
     
     
     # -----------------------------------------------
@@ -238,49 +243,183 @@ def run(args):
     # -----------------------------------------------
     #      ML model configs
     # -----------------------------------------------
+#     # TODO: consider creating a per-model file that lists the init and fit parametrs!
+#     # This will probably require the CANDLE functionality in terms of specifying input args.
+#     if args['model_name'] == 'lgb_reg':
+#         args['framework'] = 'lightgbm'
+#         init_kwargs = { 'n_estimators': args['gbm_trees'], 'max_depth': args['gbm_max_depth'],
+#                         'learning_rate': args['gbm_lr'], 'num_leaves': args['gbm_leaves'],
+#                         'n_jobs': args['n_jobs'], 'random_state': args['seed'] }
+#         fit_kwargs = {'verbose': False}
+
+#     elif args['model_name'] == 'rf_reg':
+#         args['framework'] = 'sklearn'
+#         init_kwargs = { 'n_estimators': args['rf_trees'], 'n_jobs': args['n_jobs'], 'random_state': args['seed'] }
+#         fit_kwargs = {}
+
+#     elif args['model_name'] == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':
+#         args['framework'] = 'keras'
+#         init_kwargs = { 'input_dim': xdata.shape[1], 'dr_rate': args['dr_rate'], 'opt_name': args['opt'],
+#                         'lr': args['lr'], 'batchnorm': args['batchnorm'], 'logger': lg.logger }
+#         fit_kwargs = { 'batch_size': args['batch_size'], 'epochs': args['epochs'], 'verbose': 1 }
+        
     if args['model_name'] == 'lgb_reg':
-        framework = 'lightgbm'
-        init_kwargs = {'n_estimators': args['gbm_trees'], 'max_depth': args['gbm_max_depth'],
-                       'learning_rate': args['gbm_lr'], 'num_leaves': args['gbm_leaves'],
-                       'n_jobs': args['n_jobs'], 'random_state': args['seed']}
-        fit_kwargs = {'verbose': False}
-
+        args['framework'] = 'lightgbm'
     elif args['model_name'] == 'rf_reg':
-        framework = 'sklearn'
-        init_kwargs = {'n_estimators': args['rf_trees'], 'n_jobs': args['n_jobs'], 'random_state': args['seed']}
-        fit_kwargs = {}
+        args['framework'] = 'sklearn'
+    elif 'nn_' in args['model_name']:
+        args['framework'] = 'keras'
 
-    elif args['model_name'] == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':
-        framework = 'keras'
-        init_kwargs = {'input_dim': xdata.shape[1], 'dr_rate': args['dr_rate'], 'opt_name': args['opt'],
-                       'lr': args['lr'], 'batchnorm': args['batchnorm'], 'logger': lg.logger}
-        fit_kwargs = {'batch_size': args['batch_size'], 'epochs': args['epochs'], 'verbose': 1}  # 'validation_split': 0.1
+    def get_model_kwargs(args):
+        # TODO: consider creating a per-model file that lists the init and fit parametrs!
+        # This may require CANDLE functionality in terms of specifying input args.
+        if args['framework'] == 'lightgbm':
+            # gbm_args = ['gbm_trees', 'gbm_max_depth', 'gbm_lr', 'gbm_leaves', 'n_jobs', 'seed']
+            model_init_kwargs = { 'n_estimators': args['gbm_trees'], 'max_depth': args['gbm_max_depth'],
+                                  'learning_rate': args['gbm_lr'], 'num_leaves': args['gbm_leaves'],
+                                  'n_jobs': args['n_jobs'], 'random_state': args['seed'] }
+            model_fit_kwargs = {'verbose': False}
 
+        elif args['framework'] == 'sklearn':
+            # rf_args = ['rf_trees', 'n_jobs', 'seed']
+            model_init_kwargs = { 'n_estimators': args['rf_trees'], 'n_jobs': args['n_jobs'], 'random_state': args['seed'] }
+            model_fit_kwargs = {}
+
+        elif args['framework'] == 'keras':
+            # nn_args = ['dr_rate', 'opt_name', 'lr', 'batchnorm', 'batch_size']
+            model_init_kwargs = { 'input_dim': xdata.shape[1], 'dr_rate': args['dr_rate'],
+                                  'opt_name': args['opt'], 'lr': args['lr'], 'batchnorm': args['batchnorm']}
+            model_fit_kwargs = { 'batch_size': args['batch_size'], 'epochs': args['epochs'], 'verbose': 1 }        
+        
+        return model_init_kwargs, model_fit_kwargs
+    #====================================
+    
+    lrn_crv_init_kwargs = { 'cv': None, 'cv_lists': (tr_id, vl_id, te_id), 'cv_folds_arr': args['cv_folds_arr'],
+                            'shard_step_scale': args['shard_step_scale'], 'n_shards': args['n_shards'],
+                            'min_shard': args['min_shard'], 'max_shard': args['max_shard'], 'outdir': args['outdir'],
+                            'shards_arr': args['shards_arr'], 'args': args, 'logger': lg.logger } 
+                    
+    lc = LearningCurve( X=xdata, Y=ydata, meta=meta, **lrn_crv_init_kwargs )        
+
+    if args['hp_file'] is None:
+        # The regular workflow where all subsets are trained with the same HPs
+        model_init_kwargs, model_fit_kwargs = get_model_kwargs(args)
+        
+        lrn_crv_trn_kwargs = { 'framework': args['framework'], 'mltype': mltype, 'model_name': args['model_name'],
+                'init_kwargs': model_init_kwargs, 'fit_kwargs': model_fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
+                'n_jobs': args['n_jobs'], 'random_state': args['seed'] }        
+        
+        # lc = LearningCurve( X=xdata, Y=ydata, meta=meta, **lrn_crv_init_kwargs )        
+        lrn_crv_scores = lc.trn_learning_curve( **lrn_crv_trn_kwargs )
+    else:
+        # The workflow follows PS-HPO where we a the set HPs per subset.
+        # In this case we need to call the trn_learning_curve() method for
+        # every subset with appropriate HPs. We'll need to update shards_arr
+        # for every run of trn_learning_curve().
+        fpath = verify_dirpath(args['hp_file'])
+        hp = pd.read_csv(fpath)
+        hp.to_csv(args['outdir']/'hpo_ps.csv', index=False)
+
+        # Params to update based on framework
+        if args['framework'] == 'lightgbm':
+            prm_names = ['gbm_trees', 'gbm_max_depth', 'gbm_lr', 'gbm_leaves']
+        elif args['framework'] == 'sklearn':
+            prm_names = ['rf_trees']
+        elif args['framework'] == 'keras':
+            prm_names = ['dr_rate', 'opt', 'lr', 'batchnorm', 'batch_size']
+
+        # Params of interest
+        df_print = hp[ prm_names + ['tr_size', 'mean_absolute_error'] ]
+        lg.logger.info( df_print )
+
+        # Find the intersect btw available and requested tr sizes
+        tr_sizes = list( set(lc.tr_shards).intersection(set(hp['tr_size'].unique())) )
+        lg.logger.info('\nIntersect btw available and requested tr sizes: {}'.format( tr_sizes ))
+
+        lrn_crv_scores = []
+        for sz in tr_sizes:
+            prm = hp[hp['tr_size']==sz]
+            lrn_crv_init_kwargs['shards_arr'] = [sz]
+            lc.tr_shards = [sz] 
+            
+            # Update model_init and model_fit params
+            prm = prm.to_dict(orient='records')[0]  # unroll single-raw df into dict
+                
+            # Update args
+            lg.logger.info('\nUpdate args for tr size {}'.format(sz))
+            lg.logger.info( df_print[ df_print['tr_size']==sz ] )
+            for n in prm_names:
+                lg.logger.info('{}: set to {}'.format(n, prm[n]))
+                args[n] = prm[n]
+            model_init_kwargs, model_fit_kwargs = get_model_kwargs(args)
+            
+            # model_init_kwargs = {prm[k] for k in model_init_kwargs.keys()}
+            # model_fit_kwargs = {prm[k] for k in model_fit_kwargs.keys()}
+            lrn_crv_trn_kwargs = { 'framework': args['framework'], 'mltype': mltype, 'model_name': args['model_name'],
+                    'init_kwargs': model_init_kwargs, 'fit_kwargs': model_fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
+                    'n_jobs': args['n_jobs'], 'random_state': args['seed'] }        
+            
+            per_subset_scores = lc.trn_learning_curve( **lrn_crv_trn_kwargs )
+            lrn_crv_scores.append( per_subset_scores )
+
+            # Print scores
+            # print( per_subset_scores[ per_subset_scores['set']=='te' ] )
+
+        # Concat per-subset scores 
+        lrn_crv_scores = pd.concat(lrn_crv_scores, axis=0)
+
+        # Save tr, vl, te separently
+        lrn_crv_scores[ lrn_crv_scores['set']=='tr' ].to_csv( args['outdir']/'tr_lrn_crv_scores.csv', index=False) 
+        lrn_crv_scores[ lrn_crv_scores['set']=='vl' ].to_csv( args['outdir']/'vl_lrn_crv_scores.csv', index=False) 
+        lrn_crv_scores[ lrn_crv_scores['set']=='te' ].to_csv( args['outdir']/'te_lrn_crv_scores.csv', index=False) 
+
+    # Dump all scores
+    lrn_crv_scores.to_csv( args['outdir']/'lrn_crv_scores.csv', index=False)
+
+    # Load results and plot
+    # lrn_crv_plot.plot_runtime( runtime_df, outdir=outdir, xtick_scale='log2', ytick_scale='log2' )
+    lrn_crv_plot.plot_lrn_crv_all_metrics( lrn_crv_scores, outdir=args['outdir'] )
+    lrn_crv_plot.plot_lrn_crv_all_metrics( lrn_crv_scores, outdir=args['outdir'], xtick_scale='log2', ytick_scale='log2' )
+    
+    #====================================
+
+    # Dump args
+    dump_dict(args, outpath=outdir/'args.txt')        
+        
+        
 
     # -----------------------------------------------
     #      Learning curve 
     # -----------------------------------------------
+    """
     lg.logger.info('\n\n{}'.format('-'*50))
     lg.logger.info(f'Learning Curves {src} ...')
     lg.logger.info('-'*50)
 
     lrn_crv_init_kwargs = { 'cv': None, 'cv_lists': (tr_id, vl_id, te_id), 'cv_folds_arr': args['cv_folds_arr'],
             'shard_step_scale': args['shard_step_scale'], 'n_shards': args['n_shards'], 'min_shard': args['min_shard'], 'max_shard': args['max_shard'],
-            'shards_arr': args['shards_arr'], 'args': args, 'logger': lg.logger, 'outdir': outdir}
+            'shards_arr': args['shards_arr'], 'outdir': args['outdir'], 'args': args, 'logger': lg.logger}
 
-    lrn_crv_trn_kwargs = { 'framework': framework, 'mltype': mltype, 'model_name': args['model_name'],
-            'init_kwargs': init_kwargs, 'fit_kwargs': fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
+    lrn_crv_trn_kwargs = { 'framework': args['framework'], 'mltype': mltype, 'model_name': args['model_name'],
+            'init_kwargs': model_init_kwargs, 'fit_kwargs': model_fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
             'n_jobs': args['n_jobs'], 'random_state': args['seed'] }
 
     t0 = time()
     lc = LearningCurve( X=xdata, Y=ydata, meta=meta, **lrn_crv_init_kwargs )
     lrn_crv_scores = lc.trn_learning_curve( **lrn_crv_trn_kwargs )
+    
+    # Load results and plot
+    # lrn_crv_plot.plot_runtime( runtime_df, outdir=outdir, xtick_scale='log2', ytick_scale='log2' )
+    # lrn_crv_plot.plot_lrn_crv_all_metrics( lrn_crv_scores, outdir=outdir )
+    # lrn_crv_plot.plot_lrn_crv_all_metrics( lrn_crv_scores, outdir=outdir, xtick_scale='log2', ytick_scale='log2' )
+    
     lg.logger.info('Runtime: {:.1f} hrs'.format( (time()-t0)/3600) )
+    """
 
 
     # -------------------------------------------------
     # Learning curve (sklearn method)
-    # Problem! cannot log multiple metrics.
+    # Main problem! cannot log multiple metrics.
     # -------------------------------------------------
     """
     lg.logger.info('\nStart learning curve (sklearn method) ...')
@@ -290,23 +429,12 @@ def run(args):
     train_sizes_frac = np.logspace(0.0, 1.0, lc_ticks, endpoint=True, base=base)/base
 
     # Run learning curve
-    t0 = time()
     lrn_curve_scores = learning_curve(
         estimator=model.model, X=xdata, y=ydata,
         train_sizes=train_sizes_frac, cv=cv, groups=groups,
         scoring=metric_name,
         n_jobs=n_jobs, exploit_incremental_learning=False,
         random_state=SEED, verbose=1, shuffle=False)
-    lg.logger.info('Runtime: {:.1f} mins'.format( (time()-t0)/60) )
-
-    # Dump results
-    # lrn_curve_scores = utils.cv_scores_to_df(lrn_curve_scores, decimals=3, calc_stats=False) # this func won't work
-    # lrn_curve_scores.to_csv(os.path.join(outdir, 'lrn_curve_scores_auto.csv'), index=False)
-
-    # Plot learning curves
-    lrn_crv.plt_learning_curve(rslt=lrn_curve_scores, metric_name=metric_name,
-        title='Learning curve (target: {}, data: {})'.format(target_name, tr_sources_name),
-        path=os.path.join(outdir, 'auto_learning_curve_' + target_name + '_' + metric_name + '.png'))
     """
     
     lg.kill_logger()

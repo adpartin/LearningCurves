@@ -40,7 +40,7 @@ filepath = Path(__file__).resolve().parent
 # Utils
 from classlogger import Logger
 from cv_splitter import cv_splitter, plot_ytr_yvl_dist
-from plotting import plot_hist
+from plots import plot_hist
 
 
 def parse_args(args):
@@ -68,7 +68,6 @@ def parse_args(args):
     # Parse args and run
     args = parser.parse_args(args)
     return args
-
 
 
 def verify_dirpath(dirpath):
@@ -102,6 +101,11 @@ def dump_dict(dct, outpath='./dict.txt'):
         for k in sorted(dct.keys()):
             file.write('{}: {}\n'.format(k, dct[k]))
 
+
+def get_print_func(logger):
+    """ Returns the python 'print' function if logger is None. Othersiwe, returns logger.info. """
+    return print if logger is None else logger.info
+    
     
 def cnt_fea(df, fea_sep='_', verbose=True, logger=None):
     """ Count the number of features per feature type. """
@@ -121,7 +125,7 @@ def cnt_fea(df, fea_sep='_', verbose=True, logger=None):
 def extract_subset_fea(df, fea_list, fea_sep='_'):
     """ Extract features based feature prefix name. """
     fea = [c for c in df.columns if (c.split(fea_sep)[0]) in fea_list]
-    return df[fea]    
+    return df[fea]
     
             
 def print_intersection_on_var(df, tr_id, vl_id, te_id, grp_col='CELL', logger=None):
@@ -131,12 +135,20 @@ def print_intersection_on_var(df, tr_id, vl_id, te_id, grp_col='CELL', logger=No
     tr_grp_unq = set(df.loc[tr_id, grp_col])
     vl_grp_unq = set(df.loc[vl_id, grp_col])
     te_grp_unq = set(df.loc[te_id, grp_col])
-    logger.info(f'\tTotal intersections on {grp_col} btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}')
-    logger.info(f'\tTotal intersections on {grp_col} btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}')
-    logger.info(f'\tTotal intersections on {grp_col} btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}')
-    logger.info(f'\tUnique {grp_col} in tr: {len(tr_grp_unq)}')
-    logger.info(f'\tUnique {grp_col} in vl: {len(vl_grp_unq)}')
-    logger.info(f'\tUnique {grp_col} in te: {len(te_grp_unq)}')    
+    print_fn = get_print_func(logger)
+#     logger.info(f'\tTotal intersections on {grp_col} btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}')
+#     logger.info(f'\tTotal intersections on {grp_col} btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}')
+#     logger.info(f'\tTotal intersections on {grp_col} btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}')
+#     logger.info(f'\tUnique {grp_col} in tr: {len(tr_grp_unq)}')
+#     logger.info(f'\tUnique {grp_col} in vl: {len(vl_grp_unq)}')
+#     logger.info(f'\tUnique {grp_col} in te: {len(te_grp_unq)}')    
+    print_fn(f'\tTotal intersections on {grp_col} btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}')
+    print_fn(f'\tTotal intersections on {grp_col} btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}')
+    print_fn(f'\tTotal intersections on {grp_col} btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}')
+    print_fn(f'\tUnique {grp_col} in tr: {len(tr_grp_unq)}')
+    print_fn(f'\tUnique {grp_col} in vl: {len(vl_grp_unq)}')
+    print_fn(f'\tUnique {grp_col} in te: {len(te_grp_unq)}')    
+
 
 
 def run(args):
@@ -560,3 +572,4 @@ def main(args):
     
 if __name__ == '__main__':
     main(sys.argv[1:])
+
