@@ -519,12 +519,15 @@ class LearningCurve():
 # --------------------------------------------------------------------------------
 
 
-def define_keras_callbacks(outdir):
+def define_keras_callbacks(outdir, ref_metric='mean_absolute_error'):
     checkpointer = ModelCheckpoint(str(outdir/'model_best.h5'), monitor='val_loss', verbose=0, save_weights_only=False, save_best_only=True)
     csv_logger = CSVLogger(outdir/'training.log')
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.75, patience=20, verbose=1, mode='auto',
+    # reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.75, patience=20, verbose=1, mode='auto',
+                                  # min_delta=0.0001, cooldown=3, min_lr=0.000000001)
+    reduce_lr = ReduceLROnPlateau(monitor=ref_metric, factor=0.75, patience=20, verbose=1, mode='auto',
                                   min_delta=0.0001, cooldown=3, min_lr=0.000000001)
-    early_stop = EarlyStopping(monitor='val_loss', patience=50, verbose=1)
+    # early_stop = EarlyStopping(monitor='val_loss', patience=50, verbose=1)
+    early_stop = EarlyStopping(monitor=ref_metric, patience=50, verbose=1)
     return [checkpointer, csv_logger, early_stop, reduce_lr]
 
 
