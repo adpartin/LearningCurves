@@ -287,7 +287,7 @@ class LearningCurve():
             vl_id = self.vl_dct[fold_num]
             te_id = self.te_dct[fold_num]
             
-            # Extract Training set T, Validation set V, and Test set E
+            # Extract Train set T, Validation set V, and Test set E
             xtr, ytr, mtr = self.get_data_by_id(tr_id) # samples from xtr are sequentially sampled for TRAIN
             xvl, yvl, mvl = self.get_data_by_id(vl_id) # fixed set of VAL samples for the current CV split
             xte, yte, mte = self.get_data_by_id(te_id) # fixed set of TEST samples for the current CV split

@@ -55,11 +55,8 @@ def parse_args(args):
     # Select feature types
     parser.add_argument('-cf', '--cell_fea', nargs='+', default=['GE'], choices=['GE'], help='Cell line features (default: GE).')
     parser.add_argument('-df', '--drug_fea', nargs='+', default=['DD'], choices=['DD'], help='Drug features (default: DD).')
-    # parser.add_argument('-of', '--other_fea', default=[], choices=[],
-    #         help='Other feature types (derived from cell lines and drugs). E.g.: cancer type, etc).') # ['cell_labels', 'drug_labels', 'ctype', 'csite', 'rna_clusters']
 
     # Data split methods
-    # parser.add_argument('-cvm', '--cv_method', default='simple', type=str, choices=['simple', 'group'], help='CV split method (default: simple).')
     parser.add_argument('-cvf', '--cv_folds', default=1, type=str, help='Number cross-val folds (default: 1).')
     parser.add_argument('-cvf_arr', '--cv_folds_arr', nargs='+', type=int, default=None, help='The specific folds in the cross-val run (default: None).')
     
@@ -72,7 +69,6 @@ def parse_args(args):
     # LightGBM params
     parser.add_argument('--gbm_trees', default=100, type=int, help='Number of trees (default: 100).')
     parser.add_argument('--gbm_max_depth', default=-1, type=int, help='Maximum tree depth for base learners (default: -1).')
-    # parser.add_argument('--gbm_iters', default=None, type=int, help='Limit number of iterations in the prediction (default: None).')
     parser.add_argument('--gbm_lr', default=0.1, type=float, help='Boosting learning rate (default: 0.1).')
     parser.add_argument('--gbm_leaves', default=31, type=int, help='Maximum tree leaves for base learners (default: 31).')
     
@@ -136,7 +132,8 @@ def create_outdir(outdir, args, src):
     if 'nn' in args['model_name']: l = [args['opt']] + l
                 
     fname = '.'.join( [src] + l ) + '_' + t
-    outdir = Path( src + '_trn' ) / ('split_on_' + args['split_on']) / fname
+    # outdir = Path( src + '_trn' ) / ('split_on_' + args['split_on']) / fname
+    outdir = Path( 'trn.' + src) / ('split_on_' + args['split_on']) / fname
     os.makedirs(outdir)
     #os.makedirs(outdir, exist_ok=True)
     return outdir
@@ -201,14 +198,7 @@ def run(args):
     args['split_on'] = find_arg(lines, 'split_on').lower()
     args['split_seed'] = find_arg(lines, 'seed').lower()
 
-    # Define metrics
-    # metrics = {'r2': 'r2',
-    #            'neg_mean_absolute_error': 'neg_mean_absolute_error', #sklearn.metrics.neg_mean_absolute_error,
-    #            'neg_median_absolute_error': 'neg_median_absolute_error', #sklearn.metrics.neg_median_absolute_error,
-    #            'neg_mean_squared_error': 'neg_mean_squared_error', #sklearn.metrics.neg_mean_squared_error,
-    #            'reg_auroc_score': utils.reg_auroc_score}
-    
-    
+
     # -----------------------------------------------
     #       Load data and pre-proc
     # -----------------------------------------------
@@ -299,17 +289,21 @@ def run(args):
                             'min_shard': args['min_shard'], 'max_shard': args['max_shard'], 'outdir': args['outdir'],
                             'shards_arr': args['shards_arr'], 'args': args, 'logger': lg.logger } 
                     
+    lrn_crv_trn_kwargs = { 'framework': args['framework'], 'mltype': mltype, 'model_name': args['model_name'],
+                           'clr_keras_kwargs': clr_keras_kwargs, 'n_jobs': args['n_jobs'], 'random_state': args['seed'] }        
+    
     lc = LearningCurve( X=xdata, Y=ydata, meta=meta, **lrn_crv_init_kwargs )        
 
     if args['hp_file'] is None:
         # The regular workflow where all subsets are trained with the same HPs
         model_init_kwargs, model_fit_kwargs = get_model_kwargs(args)
+        lrn_crv_trn_kwargs['init_kwargs'] = model_init_kwargs
+        lrn_crv_trn_kwargs['fit_kwargs'] = model_fit_kwargs
         
-        lrn_crv_trn_kwargs = { 'framework': args['framework'], 'mltype': mltype, 'model_name': args['model_name'],
-                'init_kwargs': model_init_kwargs, 'fit_kwargs': model_fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
-                'n_jobs': args['n_jobs'], 'random_state': args['seed'] }        
-        
-        # lc = LearningCurve( X=xdata, Y=ydata, meta=meta, **lrn_crv_init_kwargs )        
+        # lrn_crv_trn_kwargs = { 'framework': args['framework'], 'mltype': mltype, 'model_name': args['model_name'],
+        #         'init_kwargs': model_init_kwargs, 'fit_kwargs': model_fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
+        #         'n_jobs': args['n_jobs'], 'random_state': args['seed'] }        
+
         lrn_crv_scores = lc.trn_learning_curve( **lrn_crv_trn_kwargs )
     else:
         # The workflow follows PS-HPO where we a the set HPs per subset.
@@ -351,14 +345,14 @@ def run(args):
             for n in prm_names:
                 lg.logger.info('{}: set to {}'.format(n, prm[n]))
                 args[n] = prm[n]
+
             model_init_kwargs, model_fit_kwargs = get_model_kwargs(args)
-            
+            lrn_crv_trn_kwargs['init_kwargs'] = model_init_kwargs
+            lrn_crv_trn_kwargs['fit_kwargs'] = model_fit_kwargs
+
             # model_init_kwargs = {prm[k] for k in model_init_kwargs.keys()}
             # model_fit_kwargs = {prm[k] for k in model_fit_kwargs.keys()}
-            lrn_crv_trn_kwargs = { 'framework': args['framework'], 'mltype': mltype, 'model_name': args['model_name'],
-                    'init_kwargs': model_init_kwargs, 'fit_kwargs': model_fit_kwargs, 'clr_keras_kwargs': clr_keras_kwargs,
-                    'n_jobs': args['n_jobs'], 'random_state': args['seed'] }        
-            
+
             per_subset_scores = lc.trn_learning_curve( **lrn_crv_trn_kwargs )
             lrn_crv_scores.append( per_subset_scores )
 

@@ -24,7 +24,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import seaborn as sns
-t0 = time()
 
 
 # File path
@@ -68,6 +67,7 @@ def create_basename(args):
         # name = '.'.join( ['tidy'] + args['src'] + ls )
         src_names = '_'.join( args['src'] )
         name = '.'.join( [src_names] + ls )
+    name = 'data.' + name
     return name
 
 
@@ -156,7 +156,7 @@ def load_rna(datadir, rna_norm, logger=None, keep_cells_only=True, float_type=np
     return rna
         
 
-def load_dsc(filename, logger=None, dropna_th=0.4, float_type=np.float32, impute=True, plot=True):  
+def load_dsc(filename, logger=None, dropna_th=0.4, float_type=np.float32, impute=True, plot=True, outdir=None):  
     """ Load drug descriptors. """
     if logger: logger.info(f'\nLoad drug descriptors ... {DATADIR / filename}')
     dsc = pd.read_csv(DATADIR/filename, sep='\t', low_memory=False, na_values=na_values, warn_bad_lines=True)
@@ -170,7 +170,8 @@ def load_dsc(filename, logger=None, dropna_th=0.4, float_type=np.float32, impute
     # dsc.nunique(dropna=True).value_counts()
     # dsc.nunique(dropna=True).sort_values()
     if logger: logger.info('Drop descriptors with too many NA values ...')
-    if plot: plot_dsc_na_dist(dsc=dsc, savepath=Path(args['outdir'])/'dsc_hist_ratio_of_na.png')
+    if plot and (outdir is not None):
+        plot_dsc_na_dist(dsc=dsc, savepath=Path(outdir)/'dsc_hist_ratio_of_na.png')
     dsc = dropna(dsc, axis=1, th=dropna_th)
     if logger: logger.info(f'dsc.shape {dsc.shape}')
     # dsc.isna().sum().sort_values(ascending=False)
@@ -275,6 +276,7 @@ def parse_args(args):
 
 
 def run(args):
+    t0 = time()
     file_format = 'parquet'
 
     # Response columns
@@ -312,7 +314,7 @@ def run(args):
     # -----------------------------------------------
     rsp = load_rsp(RSP_FILENAME, src=args['src'], keep_bad=args['keep_bad'], logger=lg.logger)
     rna = load_rna(DATADIR, rna_norm=args['rna_norm'], logger=lg.logger, float_type=prfx_dtypes['rna'])
-    dsc = load_dsc(DSC_FILENAME, dropna_th=args['dropna_th'], logger=lg.logger, float_type=prfx_dtypes['dsc'])
+    dsc = load_dsc(DSC_FILENAME, dropna_th=args['dropna_th'], logger=lg.logger, float_type=prfx_dtypes['dsc'], outdir=outdir)
 
 
     # -----------------------------------------------
@@ -399,10 +401,10 @@ def run(args):
     fname = create_basename(args)
     t0 = time()
     if file_format == 'parquet':
-        fpath = outdir/('data.'+fname+'.parquet')
+        fpath = outdir/(fname+'.parquet')
         data.to_parquet(fpath)
     else:
-        fpath = outdir/('data.'+fname+'.csv')
+        fpath = outdir/(fname+'.csv')
         data.to_csv(fpath, sep='\t')
     lg.logger.info('Save time: {:.1f} mins'.format( (time()-t0)/60) )
 
@@ -433,3 +435,5 @@ def main(args):
     
 if __name__ == '__main__':
     main(sys.argv[1:])
+
+

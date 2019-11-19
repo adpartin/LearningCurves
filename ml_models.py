@@ -98,7 +98,6 @@ def capitalize_metric(met):
     return ' '.join(s.capitalize() for s in met.split('_'))
 
 
-# def plot_prfrm_metrics(history, title=None, skp_ep=0, outdir='.', add_lr=False):
 def plot_prfrm_metrics(history=None, logfile_path=None, title=None, name=None, skp_ep=0, outdir='.', add_lr=False):    
     """ Plots training curves from keras history or keras traininig.log file.
     Args:
@@ -438,22 +437,7 @@ class LGBM_REGRESSOR(BaseMLModel):
 
         self.model = lgb.LGBMModel( objective = LGBM_REGRESSOR.ml_objective, **kwargs )
 
-    # def fit(self, X, y, eval_set=None, **fit_params):
-    #     #self.eval_set = eval_set
-    #     #self.X = X
-    #     #self.y = y
-    #     #self.x_size = X.shape  # this is used to calc adjusteed r^2
-        
-    #     t0 = time.time()
-    #     self.model.fit(X, y,
-    #                    eval_metric=self.eval_metric,
-    #                    eval_set=eval_set,
-    #                    **fit_params)
-    #     self.train_runtime = time.time() - t0
-
-
     def dump_model(self, outdir='.'):
-        # lgb_reg.save_model(os.path.join(run_outdir, 'lgb_'+ml_type+'_model.txt'))
         joblib.dump(self.model, filename=Path(outdir)/('model.' + LGBM_REGRESSOR.model_name + '.pkl'))
         # lgb_reg_ = joblib.load(filename=os.path.join(run_outdir, 'lgb_reg_model.pkl'))
 
