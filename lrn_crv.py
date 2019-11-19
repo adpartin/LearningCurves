@@ -351,15 +351,15 @@ class LearningCurve():
                 # ... training set
                 y_pred, y_true = calc_preds(model, x=xtr_sub, y=ytr_sub, mltype=self.mltype)
                 tr_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                dump_preds(y_true, y_pred, meta=mtr_sub, outdir=trn_outdir)
+                dump_preds(y_true, y_pred, meta=mtr_sub, outpath=trn_outdir/'preds_tr.csv')
                 # ... val set
                 y_pred, y_true = calc_preds(model, x=xvl, y=yvl, mltype=self.mltype)
                 vl_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                dump_preds(y_true, y_pred, meta=mvl, outdir=trn_outdir)
+                dump_preds(y_true, y_pred, meta=mvl, outpath=trn_outdir/'preds_vl.csv')
                 # ... test set
                 y_pred, y_true = calc_preds(model, x=xte, y=yte, mltype=self.mltype)
                 te_scores = calc_scores(y_true=y_true, y_pred=y_pred, mltype=self.mltype, metrics=None)
-                dump_preds(y_true, y_pred, meta=mte, outdir=trn_outdir)
+                dump_preds(y_true, y_pred, meta=mte, outpath=trn_outdir/'preds_te.csv')
                 
                 del estimator, model
 
@@ -531,7 +531,8 @@ def define_keras_callbacks(outdir, ref_metric='mean_absolute_error'):
     return [checkpointer, csv_logger, early_stop, reduce_lr]
 
 
-def dump_preds(y_true, y_pred, meta=None, outdir='.'):
+# def dump_preds(y_true, y_pred, meta=None, outdir='.'):
+def dump_preds(y_true, y_pred, meta=None, outpath='./preds.csv'):
     """ Dump prediction and true values, with optional with metadata. """
     y_true = pd.Series(y_true, name='y_true')
     y_pred = pd.Series(y_pred, name='y_pred')
@@ -541,7 +542,8 @@ def dump_preds(y_true, y_pred, meta=None, outdir='.'):
         preds.insert(loc=4, column='y_pred', value=y_pred.values)
     else:
         preds = pd.concat([y_true, y_pred], axis=1)
-    preds.to_csv(Path(outdir)/'preds.csv', index=False)
+    # preds.to_csv(Path(outdir)/'preds.csv', index=False)
+    preds.to_csv(Path(outpath), index=False)
 
 
 # --------------------------------------------------------------------------------
