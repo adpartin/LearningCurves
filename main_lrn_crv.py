@@ -92,6 +92,9 @@ def parse_args(args):
     parser.add_argument('--clr_max_lr', type=float, default=1e-3, help='Max lr for cycle lr.')
     parser.add_argument('--clr_gamma', type=float, default=0.999994, help='Gamma parameter for learning cycle LR.')
 
+    # HPO metric
+    parser.add_argument('--hpo_metric', default='mean_absolute_error', type=str, choices=['mean_absolute_error'], help='Metric for HPO evaluation. Required for UPF workflow on Theta HPC (default: mean_absolute_error).')
+
     # Learning curve
     parser.add_argument('--shard_step_scale', default='log2', type=str, choices=['log2', 'log', 'log10', 'linear'],
             help='Scale of progressive sampling of shards (log2, log, log10, linear) (default: log2).')
@@ -211,7 +214,8 @@ def run(args):
     vl_id = read_data_file( dirpath/'{}fold_vl_id.csv'.format(args['cv_folds']) )
     te_id = read_data_file( dirpath/'{}fold_te_id.csv'.format(args['cv_folds']) )
 
-    src = str(dirpath.parent).split('/')[-1].split('.')[0]
+    # src = str(dirpath.parent).split('/')[-1].split('.')[0]
+    src = str(dirpath.parent).split('/')[-1].split('.')[1]
 
 
     # -----------------------------------------------
@@ -433,6 +437,9 @@ def run(args):
     
     lg.kill_logger()
     del xdata, ydata
+
+    # This is required by UPF workflow on Theta HPC
+    return lrn_crv_scores[(lrn_crv_scores['metric'] == args['hpo_metric']) & (lrn_crv_scores['set'] == 'te')].values[0][3]
 
 
 def main(args):
