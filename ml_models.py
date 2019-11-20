@@ -28,7 +28,7 @@ from keras import optimizers
 from keras.optimizers import SGD, Adam, RMSprop, Adadelta
 from keras.models import Sequential, Model, model_from_json, model_from_yaml
 from keras.utils import np_utils, multi_gpu_model
-from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+# from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
 
 import lightgbm as lgb
 

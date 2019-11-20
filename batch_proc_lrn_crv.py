@@ -25,6 +25,11 @@ def main(args):
     # dirs = Path(dirpath).glob('data_splits_seed*')
     dirs = glob(os.path.join(dirpath, 'data_splits_seed*'))
     for dpath in dirs:
-        main_lrn_crv.main(['--dirpath', str(dpath) ])
+        main_lrn_crv.main([ '--dirpath', str(dpath) ])
+
+    runtime = time() - t0
+    print('Done.')
 
 main(sys.argv[1:])
+
+# python batch_proc_lrn_crv.py 
