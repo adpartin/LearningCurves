@@ -36,17 +36,15 @@ from pandas.api.types import is_string_dtype
 from sklearn.preprocessing import LabelEncoder
 from sklearn.externals import joblib
 
-try:
-    import keras
-    from keras.models import load_model
-    from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
-    from keras.utils import plot_model
-except ImportWarning:
-   pass 
+import keras
+from keras.models import load_model
+from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+from keras.utils import plot_model
 
 # Utils
 import ml_models
 from plots import plot_hist, plot_runtime
+
 
 # --------------------------------------------------------------------------------
 class LearningCurve():

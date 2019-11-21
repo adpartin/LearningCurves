@@ -32,7 +32,6 @@ t0 = time()
 # File path
 filepath = Path(__file__).resolve().parent
 
-
 # Utils
 from classlogger import Logger
 from lrn_crv import LearningCurve

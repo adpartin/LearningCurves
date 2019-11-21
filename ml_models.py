@@ -20,7 +20,11 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.externals import joblib
 
-import tensorflow as tf
+try:
+    import tensorflow as tf
+except:
+   print('Could not import tensorflow.')
+
 import keras
 from keras import backend as K
 from keras.layers import Input, Dense, Dropout, Activation, BatchNormalization, Embedding, Flatten, Lambda, merge
