@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+t0 = time()
 
 
 # File path
@@ -442,7 +443,12 @@ def run(args):
         n_jobs=n_jobs, exploit_incremental_learning=False,
         random_state=SEED, verbose=1, shuffle=False)
     """
-    
+
+    if (time()-t0)//3600 > 0:
+        lg.logger.info('Runtime: {:.1f} hrs'.format( (time()-t0)/3600) )
+    else:
+        lg.logger.info('Runtime: {:.1f} min'.format( (time()-t0)/60) )
+        
     lg.kill_logger()
     del xdata, ydata
 

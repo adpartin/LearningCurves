@@ -36,10 +36,13 @@ from pandas.api.types import is_string_dtype
 from sklearn.preprocessing import LabelEncoder
 from sklearn.externals import joblib
 
-import keras
-from keras.models import load_model
-from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
-from keras.utils import plot_model
+try:
+    import keras
+    from keras.models import load_model
+    from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+    from keras.utils import plot_model
+except ImportWarning:
+   pass 
 
 # Utils
 import ml_models
@@ -234,7 +237,7 @@ class LearningCurve():
             self.tr_shards = m
         # --------------------------------------------
         
-        if self.logger is not None: self.logger.info('Train shards: {}\n'.format(self.tr_shards))
+        if self.logger is not None: self.logger.info('\nTrain shards: {}\n'.format(self.tr_shards))
 
 
     def trn_learning_curve(self,

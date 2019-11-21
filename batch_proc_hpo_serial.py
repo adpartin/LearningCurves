@@ -23,6 +23,7 @@ import main_lrn_crv
 def parse_args(args):
     parser = argparse.ArgumentParser(description="Serial HPO learning curve.")
     parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to data and splits (default: None).')
+    parser.add_argument('-gout', '--global_outdir', type=str, required=True, help='Global outdir.')
     # args = parser.parse_args(args)
     args, other_args = parser.parse_known_args(args)
     return args, other_args
@@ -53,6 +54,7 @@ def dict_to_argv_list(dct):
 def run(args, other_args):
     t0 = time()
     # dirpath = verify_dirpath(args['dirpath'])
+    global_outdir = args['global_outdir']
     args = dict_to_argv_list(args) + other_args
 
     # Global args
@@ -66,10 +68,19 @@ def run(args, other_args):
     const_args = {'model_name': MODEL_NAME}
 
     # HPs
-    GBM_LEAVES = [31, 10, 50, 100, 500, 1000]
+    # GBM_LEAVES = [31, 10, 50, 100, 500, 1000]
+    # GBM_MAX_DEPTH = [-1, 5, 10, 20]
+    # GBM_LR = [0.1, 0.01, 0.001]
+    # GBM_TREES = [100, 1000, 2000]
+    GBM_LEAVES = [31, 10, 50, 100]
     GBM_MAX_DEPTH = [-1, 5, 10, 20]
     GBM_LR = [0.1, 0.01, 0.001]
     GBM_TREES = [100, 1000, 2000]
+    # GBM_LEAVES = [31]
+    # GBM_MAX_DEPTH = [-1]
+    # GBM_LR = [0.1]
+    # GBM_TREES = [100, 2]
+
 
     arg_value_list = [ GBM_LEAVES,   GBM_MAX_DEPTH,   GBM_LR,   GBM_TREES ]
     arg_name_list =  [ "gbm_leaves", "gbm_max_depth", "gbm_lr", "gbm_trees" ]
@@ -77,9 +88,10 @@ def run(args, other_args):
     # Generate HPs sets
     combs = list(itertools.product( *arg_value_list ))
     digits = len(str(len(combs)))
-    print('Total runs: {}'.format(len(combs))
+    print('Total runs: {}'.format(len(combs)))
     
     plans = []
+    list_of_arg_sets = []
     for i, c in enumerate(combs):
         item = assign_keys_to_values(keys=arg_name_list, values=c)
         # item['id'] = "run" + f"{i}".zfill(digits)
@@ -90,14 +102,16 @@ def run(args, other_args):
         plans.append(json.dumps(item))
 
         arg_list = args + dict_to_argv_list(item)
+        list_of_arg_sets.append(arg_list)
+
+    for arg_list in list_of_arg_sets:
         main_lrn_crv.main( arg_list )
-        # plans.append(json.dumps(item))
 
     runtime = time() - t0
-    print('Runtime: {} hrs.'.format(runtime/360))
+    print('Runtime: {} hrs.'.format(runtime/3600))
     # lg.logger.info('Runtime: {} hrs.'.format(runtime/360)
 
-    with open(f'upf-lc.txt', 'w') as output_f:
+    with open(Path(global_outdir)/'upf-lc.txt', 'w') as output_f:
         for item in plans:
             output_f.write(item+'\n')
 
@@ -111,4 +125,4 @@ def main(args):
 if __name__ == '__main__':
     main(sys.argv[1:])
 
-
+# python batch_proc
