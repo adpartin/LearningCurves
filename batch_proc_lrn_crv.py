@@ -1,5 +1,5 @@
 """
-This is a batch prcoessing code that calls main_lrn_crv.py with the same set of parameters
+A batch prcoessing code that calls main_lrn_crv.py with the same set of parameters
 but different data_splits_seed#
 """
 import warnings
@@ -21,13 +21,13 @@ def main(args):
     dirpath = args[0]
 
     # glob all files data_splits_seed
-    # dirs = glob('data_splits_seed*')
     # dirs = Path(dirpath).glob('data_splits_seed*')
     dirs = glob(os.path.join(dirpath, 'data_splits_seed*'))
     for dpath in dirs:
         main_lrn_crv.main([ '--dirpath', str(dpath) ])
 
     runtime = time() - t0
+    print('Runtime: {} hrs.'.format(runtime/360)
     print('Done.')
 
 main(sys.argv[1:])

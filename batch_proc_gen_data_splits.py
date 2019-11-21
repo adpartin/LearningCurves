@@ -1,6 +1,6 @@
 """
-This is a batch prcoessing code that calls main_lrn_crv.py with the same set of parameters
-but different data_splits_seed#
+A batch prcoessing code that calls gen_data_splits.py with the same set of parameters
+but different datasets.
 """
 import warnings
 warnings.filterwarnings('ignore')

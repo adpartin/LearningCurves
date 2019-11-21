@@ -40,7 +40,7 @@ import lrn_crv_plot
     
     
 # Default settings
-OUTDIR = filepath / './'    
+# OUTDIR = filepath / './'    
     
         
 def parse_args(args):
@@ -48,6 +48,9 @@ def parse_args(args):
 
     # Input data
     parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to data and splits (default: None).')
+
+    # Global outdir
+    parser.add_argument('-gout', '--global_outdir', default=None, type=str, help='Gloabl outdir. In this path another dir is created for the run (default: None).')
 
     # Select target to predict
     parser.add_argument('-t', '--target_name', default='AUC', type=str, choices=['AUC', 'AUC1'], help='Name of target variable (default: AUC).')
@@ -137,7 +140,8 @@ def create_outdir(outdir, args, src):
                 
     fname = '.'.join( [src] + l ) + '_' + t
     # outdir = Path( src + '_trn' ) / ('split_on_' + args['split_on']) / fname
-    outdir = Path( 'trn.' + src) / ('split_on_' + args['split_on']) / fname
+    # outdir = Path( 'trn.' + src) / ('split_on_' + args['split_on']) / fname
+    outdir = outdir / Path( 'trn.' + src) / ('split_on_' + args['split_on']) / fname
     os.makedirs(outdir)
     #os.makedirs(outdir, exist_ok=True)
     return outdir
@@ -182,6 +186,14 @@ def scale_fea(xdata, scaler_name='stnd', dtype=np.float32):
     
 def run(args):
     dirpath = verify_dirpath(args['dirpath'])
+
+    # Global outdir
+    # OUTDIR = filepath/'./' if args['global_outdir'] is None else Path(args['global_outdir'])
+    if args['global_outdir'] is None:
+        OUTDIR = filepath/'./'
+    else:
+        OUTDIR = Path(args['global_outdir']).absolute()
+    
 
     clr_keras_kwargs = {'mode': args['clr_mode'], 'base_lr': args['clr_base_lr'],
                         'max_lr': args['clr_max_lr'], 'gamma': args['clr_gamma']}
@@ -380,7 +392,6 @@ def run(args):
 
     # Dump args
     dump_dict(args, outpath=outdir/'args.txt')        
-        
         
 
     # -----------------------------------------------
