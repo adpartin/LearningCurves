@@ -316,6 +316,89 @@ class NN_REG_ATTN(BaseMLModel):
         self.model = model        
         
         
+class NN_REG_ATTN_(BaseMLModel):
+    """ Neural network regressor. 
+    Fully-connected NN with attention layer.
+    """
+    model_name = 'nn_reg1'
+
+    # def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', logger=None):
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+        self.lr = lr
+        
+        # layers = [1000, 1000, 500, 250, 125, 60, 30]
+        inputs = Input(shape=(self.input_dim,), name='inputs')        
+        
+        # inputs = Input(shape=(input_dim,))
+        #x = Lambda(lambda x: x, output_shape=(1000,))(inputs)
+        # attn_lin = Dense(1000, activation='relu', name='attn_lin')(inputs)
+        # attn_probs = Dense(1000, activation='softmax', name='attn_probs')(inputs)
+        # x = keras.layers.multiply( [attn_lin, attn_probs], name='attn')
+        
+        # ------------------------------------------
+        # New attention layer (Rick, Austin)
+        a = Dense(1000)(inputs)
+        a = BatchNormalization()(a)
+        a = Activation('relu')(a)
+        b = Attention(1000)(a)
+        x = keras.layers.multiply([b, a])
+
+        x = Dense(1000)(x)
+        # x = BatchNormalization()(x)
+        if batchnorm: x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dr_rate)(x)
+
+        x = Dense(500)(x)
+        # x = BatchNormalization()(x)
+        if batchnorm: x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dr_rate)(x)
+        
+        x = Dense(250)(x)
+        # x = BatchNormalization()(x)
+        if batchnorm: x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dr_rate)(x)
+        
+        x = Dense(125)(x)
+        # x = BatchNormalization()(x)
+        if batchnorm: x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dr_rate)(x)
+
+        x = Dense(60)(x)
+        # x = BatchNormalization()(x)
+        if batchnorm: x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dr_rate)(x)
+
+        x = Dense(30)(x)
+        # x = BatchNormalization()(x)
+        if batchnorm: x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Dropout(dr_rate)(x)
+        # ------------------------------------------
+
+        outputs = Dense(1, activation='relu')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+#         if opt_name == 'sgd':
+#             opt = SGD(lr=1e-4, momentum=0.9)
+#         elif opt_name == 'adam':
+#             opt = Adam(lr=1e-3, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+#         else:
+#             opt = SGD(lr=1e-4, momentum=0.9) # for clr        
+        opt = self.get_optimizer()
+        
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model        
+                
+        
         
 # ---------------------------------------------------------
 class NN_REG_NEURON_LESS(BaseMLModel):

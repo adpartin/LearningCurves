@@ -35,7 +35,7 @@ filepath = Path(__file__).resolve().parent
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description='Generate summary table from HPO run.')
-    parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to the main HPO dir (default: None).')
+    parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to the main HPO dir (run on Theta/Summit) (default: None).')
     # parser.add_argument('--scr_fname', default=None, type=str, help='File name of the scores file (default: scores_tmp.csv).')
     args = parser.parse_args(args)
     return args

@@ -118,12 +118,10 @@ def build_filename(args):
     # (ap) added
     if args.top_n > 200:
         src = '' if args.src is None else '_'.join(args.src)
-        fname = "tidy.{}.res_{}.cf_{}.dd_{}{}".format(
+        fname = "data.{}.res_{}.cf_{}.dd_{}{}".format(
                 src, args.response_type, args.cell_feature, args.drug_descriptor, '.labled' if args.labels else '')
     else:
-        src = str(args.top_n)
-        fname = "tidy.top{}.{}.res_{}.cf_{}.dd_{}{}".format(
-                args.top_n, src, args.response_type, args.cell_feature, args.drug_descriptor, '.labled' if args.labels else '')
+        fname = "data.top{}.res_{}.cf_{}.dd_{}{}".format(args.top_n, args.response_type, args.cell_feature, args.drug_descriptor, '.labled' if args.labels else '')
     return fname
         
 
@@ -135,7 +133,7 @@ def build_dataframe(args):
     # outdir = Path('top' + str(args.top_n) + sffx + '_data')
     sffx = '' if args.src is None else '_'.join(args.src)
     if args.top_n < 200:
-        outdir = Path('top' + str(args.top_n) + sffx)
+        outdir = Path('data.' + 'top' + str(args.top_n) + sffx)
     else:
         outdir = Path(sffx)
     os.makedirs(outdir, exist_ok=True)    
@@ -274,6 +272,8 @@ def build_dataframe(args):
     # lg.logger.info("Shuffle final df.")
     # df_final = df_final.sample(frac=1.0, random_state=args.seed).reset_index(drop=True)
     lg.logger.info(df_final.groupby('SOURCE').agg({'CELL': 'nunique', 'DRUG': 'nunique'}).reset_index()) # (ap)
+    tmp = df_final.groupby('SOURCE').agg({'CELL': 'nunique', 'DRUG': 'nunique'}).reset_index()
+    lg.logger.info( tmp.iloc[:, 1:].sum(axis=0) )
     
     save_filename = build_filename(args)
     # print("Saving to {}".format(save_filename)) # (ap) remove

@@ -57,6 +57,56 @@ def fit_power_law_3prm(x, y, p0:list=[30, -0.5, 0.06]):
     return prms_dct
 
 
+
+def plot_lrn_crv_new(x, y, yerr=None, metric_name:str='score',
+                     xtick_scale:str='log2', ytick_scale:str='log2',
+                     xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
+                     marker='.', color=None, alpha=0.7, label:str=None, ax=None):
+    
+    """ This function takes train set size in x and score in y, and generates a learning curve plot.
+    Returns:
+        ax : ax handle from existing plot (this allows to plot results from different runs for comparison)
+    """
+    x = x.ravel()
+    y = y.ravel()
+    
+    # Init figure
+    fontsize = 13
+    legend_fontsize = 10
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot raw data
+    # p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
+    if yerr is None:
+        p = ax.plot(x, y, marker=marker, ls='-', alpha=alpha, label=label);
+    else:
+        p = ax.errorbar(x, y, yerr, marker=marker, ls='-', alpha=alpha, label=label);
+    c = p[0].get_color()
+
+    basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
+    basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
+    
+    ax.set_xlabel(f'Training Dataset Size ({xlabel_scale})', fontsize=fontsize)
+    if 'log' in xlabel_scale.lower(): ax.set_xscale('log', basex=basex)
+
+    ylabel = capitalize_metric(metric_name)
+    ax.set_ylabel(f'{ylabel} ({ylabel_scale})', fontsize=fontsize)
+    if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)        
+        
+    if ylim is not None: ax.set_ylim(ylim)
+    if xlim is not None: ax.set_ylim(xlim)
+    if title is None: title='Learning Curve'
+    ax.set_title(title)
+    
+    # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
+    if label is not None:
+        ax.legend(frameon=True, fontsize=legend_fontsize, bbox_to_anchor=(1.02, 1), loc='upper left')
+    ax.grid(True)
+    return ax
+
+
+
 def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
                            xtick_scale:str='log2', ytick_scale:str='log2',
                            xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
@@ -64,16 +114,27 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     
     """ This function takes train set size in x and score in y, and generates a learning curve plot.
     The power-law model is fitted to the learning curve data.
-    Args:
+    Returns:
         ax : ax handle from existing plot (this allows to plot results from different runs for comparison)
-        pwr_law_params : power-law model parameters after fitting
+        fit_prms : power-law model parameters after fitting
+        rmse : root mean squared error of the fit
     """
     x = x.ravel()
     y = y.ravel()
     
+    # Init figure
+    fontsize = 13
+    legend_fontsize = 10
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot raw data
+    p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
+    c = p[0].get_color()
+
     # Fit power-law (3 params)
-    power_law_params = fit_power_law_3prm(x, y)
-    yfit = power_law_func_3prm(x, **power_law_params)
+    fit_prms = fit_power_law_3prm(x, y)
+    yfit = power_law_func_3prm(x, **fit_prms)
     
     # Compute goodness-of-fit
     # R2 is not valid for non-linear models
@@ -84,18 +145,9 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     # https://www.mathworks.com/help/curvefit/evaluating-goodness-of-fit.html --> based on this we should use SSE or RMSE
     rmse = sqrt( metrics.mean_squared_error(y, yfit) )
 
-    # Init figure
-    fontsize = 13
-    legend_fontsize = 10
-    if ax is None: fig, ax = plt.subplots(figsize=figsize)
-    
-    # Plot raw data
-    p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
-    c = p[0].get_color()
-
     # Plot fit
     # eq = r"e(m)={:.2f}$m^{:.2f}$ + {:.2f}".format(power_law_params['alpha'], power_law_params['beta'], power_law_params['gamma'])
-    label_fit = '{} fit; RMSE={:.4f}; a={:.2f}; b={:.2f}'.format(label, rmse, power_law_params['alpha'], power_law_params['beta'])
+    label_fit = '{} fit; RMSE={:.4f}; a={:.2f}; b={:.2f}'.format(label, rmse, fit_prms['alpha'], fit_prms['beta'])
     # if plot_fit: ax.plot(x, yfit, '--', color=c, label=f'{label} fit; RMSE={rmse:.4f}; ' + eq);
     if plot_fit: ax.plot(x, yfit, '--', color=c, label=label_fit);
         
@@ -134,7 +186,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
     ax.legend(frameon=True, fontsize=legend_fontsize, bbox_to_anchor=(1.02, 1), loc='upper left')
     ax.grid(True)
-    return ax, power_law_params
+    return ax, fit_prms, rmse
 
 
 

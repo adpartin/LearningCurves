@@ -73,9 +73,18 @@ def run(args, other_args):
     # GBM_LR = [0.1, 0.01, 0.001]
     # GBM_TREES = [100, 1000, 2000]
     GBM_LEAVES = [31, 10, 50, 100]
-    GBM_MAX_DEPTH = [-1, 5, 10, 20]
     GBM_LR = [0.1, 0.01, 0.001]
+    GBM_MAX_DEPTH = [-1, 5, 10, 20]
     GBM_TREES = [100, 1000, 2000]
+    
+    # CCLE
+    """
+    GBM_LEAVES = [31, 10, 50]
+    GBM_LR = [0.1, 0.01]
+    GBM_MAX_DEPTH = [-1, 5, 10]
+    GBM_TREES = [100, 1000, 2000]
+    """
+    
     # GBM_LEAVES = [31]
     # GBM_MAX_DEPTH = [-1]
     # GBM_LR = [0.1]
@@ -104,6 +113,10 @@ def run(args, other_args):
         arg_list = args + dict_to_argv_list(item)
         list_of_arg_sets.append(arg_list)
 
+    with open(Path(global_outdir)/'upf-lc.txt', 'w') as f:
+        for item in plans:
+            f.write(item+'\n')
+
     for arg_list in list_of_arg_sets:
         main_lrn_crv.main( arg_list )
 
@@ -111,9 +124,6 @@ def run(args, other_args):
     print('Runtime: {} hrs.'.format(runtime/3600))
     # lg.logger.info('Runtime: {} hrs.'.format(runtime/360)
 
-    with open(Path(global_outdir)/'upf-lc.txt', 'w') as output_f:
-        for item in plans:
-            output_f.write(item+'\n')
 
 def main(args):
     args, other_args = parse_args(args)
@@ -125,4 +135,6 @@ def main(args):
 if __name__ == '__main__':
     main(sys.argv[1:])
 
-# python batch_proc
+# python batch_proc_hpo_serial.py -gout trn.gdsc/hpo_lgbm/
+
+
