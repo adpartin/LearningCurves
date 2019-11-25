@@ -66,14 +66,14 @@ def parse_args(args):
     # ML models
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
     parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str,
-                        choices=['lgb_reg', 'rf_reg', 'nn_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_layer_less', 'nn_reg_layer_more',
+                        choices=['lgb_reg', 'rf_reg', 'nn_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_attn', 'nn_reg_layer_less', 'nn_reg_layer_more',
                                  'nn_reg_neuron_less', 'nn_reg_neuron_more'], help='ML model (default: lgb_reg).')
 
     # LightGBM params
-    parser.add_argument('--gbm_trees', default=100, type=int, help='Number of trees (default: 100).')
-    parser.add_argument('--gbm_max_depth', default=-1, type=int, help='Maximum tree depth for base learners (default: -1).')
-    parser.add_argument('--gbm_lr', default=0.1, type=float, help='Boosting learning rate (default: 0.1).')
     parser.add_argument('--gbm_leaves', default=31, type=int, help='Maximum tree leaves for base learners (default: 31).')
+    parser.add_argument('--gbm_lr', default=0.1, type=float, help='Boosting learning rate (default: 0.1).')
+    parser.add_argument('--gbm_max_depth', default=-1, type=int, help='Maximum tree depth for base learners (default: -1).')
+    parser.add_argument('--gbm_trees', default=100, type=int, help='Number of trees (default: 100).')
     
     # Random Forest params
     parser.add_argument('--rf_trees', default=100, type=int, help='Number of trees (default: 100).')   
@@ -111,7 +111,7 @@ def parse_args(args):
     parser.add_argument('--hp_file', default=None, type=str, help='File containing hyperparameters for training (default: None).')
     
     # Other
-    parser.add_argument('--n_jobs', default=4, type=int, help='Default: 4.')
+    parser.add_argument('--n_jobs', default=8, type=int, help='Default: 8.')
     parser.add_argument('--seed', default=0, type=int, help='Default: 0.')
 
     # Parse args
@@ -137,6 +137,7 @@ def create_outdir(outdir, args, src):
     l = [args['model_name']] + [('cvf'+str(args['cv_folds']))] + args['cell_fea'] + args['drug_fea'] + [args['target_name']] 
     if args['clr_mode'] is not None: l = [args['clr_mode']] + l
     if 'nn' in args['model_name']: l = [args['opt']] + l
+    l = [s.lower() for s in l]
                 
     fname = '.'.join( [src] + l ) + '_' + t
     # outdir = Path( src + '_trn' ) / ('split_on_' + args['split_on']) / fname

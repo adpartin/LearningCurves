@@ -1,6 +1,6 @@
 """
-A batch prcoessing code that calls main_lrn_crv.py with the same set of parameters
-but different data_splits_seed#
+A batch prcoessing code that runs HP search by calling main_lrn_crv.py
+for different sets of HPs.
 """
 import warnings
 warnings.filterwarnings('ignore')

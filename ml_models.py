@@ -7,6 +7,7 @@ warnings.filterwarnings('ignore')
 import os
 import sys
 from pathlib import Path
+import math
 
 import sklearn
 import numpy as np
@@ -74,6 +75,9 @@ def get_model(model_name, init_kwargs=None):
         model = NN_REG0(**init_kwargs)
     elif model_name == 'nn_reg1':
         model = NN_REG1(**init_kwargs)        
+        
+    elif model_name == 'nn_reg_attn':
+        model = NN_REG_ATTN(**init_kwargs)        
         
     elif model_name == 'nn_reg_layer_less':
         model = NN_REG_L_LESS(**init_kwargs)
@@ -193,6 +197,30 @@ def plot_prfrm_metrics(history=None, logfile_path=None, title=None, name=None, s
 
 
 
+class Attention(keras.layers.Layer):
+    def __init__(self, output_dim, **kwargs):
+        self.output_dim = output_dim
+        super(Attention, self).__init__(**kwargs)
+    
+    def build(self, input_shape):
+        self.kernel = self.add_weight(name='kernel',
+                                      shape=(input_shape[1], self.output_dim),
+                                      initializer='uniform',
+                                      trainable=True)
+        super(Attention, self).build(input_shape)
+    
+    def call(self, V):
+        Q = keras.backend.dot(V, self.kernel)
+        Q =  Q * V
+        Q = Q / math.sqrt(self.output_dim)
+        Q = keras.activations.softmax(Q)
+        return Q
+    
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+    
 class BaseMLModel():
     """ A parent class with some general methods for children ML classes.
     The children classes are specific ML models such random forest regressor, lightgbm regressor, etc.
@@ -276,7 +304,7 @@ class NN_REG1(BaseMLModel):
         self.lr = lr
 
         # layers = [1000, 1000,  500, 250, 125, 60, 30]
-        layers = [2000, 2000, 1000, 500, 250, 125, 60]
+        layers = [2000, 2000, 1000, 500, 250, 125, 60, 30]
         inputs = Input(shape=(self.input_dim,), name='inputs')
         x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
 
@@ -290,37 +318,37 @@ class NN_REG1(BaseMLModel):
 
         
         
+# class NN_REG_ATTN(BaseMLModel):
+#     """ Neural network regressor.
+#     Fully-connected NN with attention.
+#     TODO: implement attention layer!
+#     """
+#     model_name = 'nn_reg_attn'
+
+#     def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
+#         self.input_dim = input_dim
+#         self.dr_rate = dr_rate
+#         self.opt_name = opt_name
+#         self.initializer = initializer
+#         self.lr = lr
+
+#         layers = [1000, 1000, 500, 250, 125, 60, 30]
+#         inputs = Input(shape=(self.input_dim,), name='inputs')
+#         x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
+
+#         outputs = Dense(1, activation='relu', name='outputs')(x)
+#         model = Model(inputs=inputs, outputs=outputs)
+        
+#         opt = self.get_optimizer()
+#         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+#         self.model = model        
+        
+        
 class NN_REG_ATTN(BaseMLModel):
-    """ Neural network regressor.
-    Fully-connected NN with attention.
-    TODO: implement attention layer!
-    """
-    model_name = 'nn_reg_attn'
-
-    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
-        self.input_dim = input_dim
-        self.dr_rate = dr_rate
-        self.opt_name = opt_name
-        self.initializer = initializer
-        self.lr = lr
-
-        layers = [1000, 1000, 500, 250, 125, 60, 30]
-        inputs = Input(shape=(self.input_dim,), name='inputs')
-        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
-
-        outputs = Dense(1, activation='relu', name='outputs')(x)
-        model = Model(inputs=inputs, outputs=outputs)
-        
-        opt = self.get_optimizer()
-        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
-        self.model = model        
-        
-        
-class NN_REG_ATTN_(BaseMLModel):
     """ Neural network regressor. 
     Fully-connected NN with attention layer.
     """
-    model_name = 'nn_reg1'
+    model_name = 'nn_reg_attn'
 
     # def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', logger=None):
     def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
@@ -341,12 +369,18 @@ class NN_REG_ATTN_(BaseMLModel):
         
         # ------------------------------------------
         # New attention layer (Rick, Austin)
+        """
         a = Dense(1000)(inputs)
         a = BatchNormalization()(a)
         a = Activation('relu')(a)
         b = Attention(1000)(a)
         x = keras.layers.multiply([b, a])
-
+        """
+        # Old attention layer
+        a = Dense(1000, activation='relu')(inputs)
+        b = Dense(1000, activation='softmax')(inputs)
+        x = keras.layers.multiply( [a, b] )        
+        
         x = Dense(1000)(x)
         # x = BatchNormalization()(x)
         if batchnorm: x = BatchNormalization()(x)

@@ -268,6 +268,10 @@ def lrn_crv_power_law_extrapolate(x, y, m0:int,
     return ax, power_law_params
 
 
+
+# ----------------------------------------------------------------------
+# The 2 funcs below are the 1st version of plot funcs that assume output
+# from sklearn learning_curve func
 def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear', ytick_scale='linear'):
     """ Takes the entire table of scores across folds and train set sizes, and generates plots of 
     learning curves for the different metrics.
@@ -377,4 +381,4 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     # Save fig
     if path is not None: plt.savefig(path, bbox_inches='tight')
     return ax
-  
+# ----------------------------------------------------------------------

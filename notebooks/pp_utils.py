@@ -30,7 +30,12 @@ def get_xy(path:str, metric_name:str='mean_absolute_error', tr_set:str='te', sha
         x : vector of tr size 
         y : vector of scores
     """
-    scores = pd.read_csv( Path(path)/'lrn_crv_scores.csv' )
+    dpath = Path(path)/'lrn_crv_scores.csv'
+    if dpath.exists():
+        scores = pd.read_csv( dpath )
+    else:
+        return (None, None)
+    # scores = pd.read_csv( Path(path)/'lrn_crv_scores.csv' )
     df = scores[scores['metric']==metric_name].reset_index(drop=True)
 
     fold_col_names = [c for c in df.columns if 'fold' in c]
@@ -54,6 +59,7 @@ def plot_lc_multi_runs(runs:list, labels:list=None, metric_name:str='mean_absolu
     """
     for i, r in enumerate(runs):        
         x, y = get_xy(path=Path(r), metric_name=metric_name, cv_folds=cv_folds, tr_set=tr_set, shard_min_idx=shard_min_idx)
+        if x is None: continue
         
         plot_kwargs = {'x': x, 'y': y, 'metric_name': metric_name, 'figsize': figsize,
                        'xtick_scale': ytick_scale, 'ytick_scale': ytick_scale,
@@ -65,7 +71,9 @@ def plot_lc_multi_runs(runs:list, labels:list=None, metric_name:str='mean_absolu
         if labels is None:
             ax = lrn_crv_plot.plot_lrn_crv_new(ax=ax, **plot_kwargs)
         else:
-            ax = lrn_crv_plot.plot_lrn_crv_new(ax=ax, **plot_kwargs, label=labels[i])            
+            ax = lrn_crv_plot.plot_lrn_crv_new(ax=ax, **plot_kwargs, label=labels[i])
+            
+    return ax
         
         
 def fit_lc_multi_runs(runs:list, labels:list=None, metric_name:str='mean_absolute_error', tr_set='te', cv_folds:int=1,
@@ -89,4 +97,7 @@ def fit_lc_multi_runs(runs:list, labels:list=None, metric_name:str='mean_absolut
             ax, fit_prms, rmse = lrn_crv_plot.plot_lrn_crv_power_law(ax=ax, **plot_kwargs)
         else:
             ax, fit_prms, rmse = lrn_crv_plot.plot_lrn_crv_power_law(ax=ax, **plot_kwargs, label=labels[i])
+            
+    return ax
+
             

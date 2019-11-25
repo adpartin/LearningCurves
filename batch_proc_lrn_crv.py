@@ -24,10 +24,10 @@ def main(args):
     # dirs = Path(dirpath).glob('data_splits_seed*')
     dirs = glob(os.path.join(dirpath, 'data_splits_seed*'))
     for dpath in dirs:
-        main_lrn_crv.main([ '--dirpath', str(dpath) ])
+        main_lrn_crv.main([ '--dirpath', str(dpath), *args[1:] ])
 
     runtime = time() - t0
-    print('Runtime: {} hrs.'.format(runtime/360)
+    print('Runtime: {} hrs.'.format(runtime/3600))
     print('Done.')
 
 main(sys.argv[1:])
