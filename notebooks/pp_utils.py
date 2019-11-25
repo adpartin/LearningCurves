@@ -22,20 +22,26 @@ sys.path.append('filepath/../')
 import lrn_crv_plot
 
 
-def get_xy(path:str, metric_name:str='mean_absolute_error', tr_set:str='te', shard_min_idx:int=0, cv_folds:int=1):
+def get_xy(scores=None, path:str=None, metric_name:str='mean_absolute_error', tr_set:str='te', shard_min_idx:int=0, cv_folds:int=1):
     """ Extract x and y (tr size and score) for the plot.
     Args:
+        df : df that contains all the scores
+        path : as an alternative to the actual df, allow to pass a full path to lrn_crv_scores.csv
         tr_set : 'tr', 'vl', 'te'
     Returns:
         x : vector of tr size 
         y : vector of scores
     """
-    dpath = Path(path)/'lrn_crv_scores.csv'
-    if dpath.exists():
-        scores = pd.read_csv( dpath )
-    else:
-        return (None, None)
-    # scores = pd.read_csv( Path(path)/'lrn_crv_scores.csv' )
+    if scores is not None:
+        scores = scores.copy()
+    elif path is not None:
+        dpath = Path(path)/'lrn_crv_scores.csv'
+        if dpath.exists():
+            scores = pd.read_csv( dpath )
+        else:
+            return (None, None)
+        # scores = pd.read_csv( Path(path)/'lrn_crv_scores.csv' )
+        
     df = scores[scores['metric']==metric_name].reset_index(drop=True)
 
     fold_col_names = [c for c in df.columns if 'fold' in c]
