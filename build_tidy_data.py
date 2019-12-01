@@ -86,6 +86,11 @@ def dump_dict(dct, outpath='./dict.txt'):
             file.write('{}: {}\n'.format(k, dct[k]))
             
 
+def get_print_func(logger):
+    """ Returns the python 'print' function if logger is None. Othersiwe, returns logger.info. """
+    return print if logger is None else logger.info            
+            
+            
 def groupby_src_and_print(df, logger):        
     if logger:
         logger.info( df.groupby('SOURCE').agg({'CELL': 'nunique', 'DRUG': 'nunique'}).reset_index() )
@@ -95,7 +100,8 @@ def groupby_src_and_print(df, logger):
     
 def load_rsp(filename, src=None, keep_bad=False, logger=None):
     """ Load drug response data. """
-    if logger: logger.info(f'\nLoad response from ... {DATADIR / RSP_FILENAME}')
+    print_fn = get_print_func(logger)
+    print_fn(f'\nLoad response from ... {DATADIR / RSP_FILENAME}')
     rsp = pd.read_table(DATADIR/RSP_FILENAME, sep='\t', na_values=na_values, warn_bad_lines=True)
     rsp.drop(columns='STUDY', inplace=True) # gives error when saves in 'parquet' format
     # print(rsp.dtypes)
@@ -110,22 +116,22 @@ def load_rsp(filename, src=None, keep_bad=False, logger=None):
         # lg.logger.info(f'rsp.shape {rsp.shape}')
         # (ap)
         # TODO: check this (may require a more rigorous filtering)
-        if logger: logger.info('\nDrop samples with low R2fit ...')
+        print_fn('\nDrop samples with low R2fit ...')
         id_drop = rsp['R2fit'] <= 0
         rsp = rsp.loc[~id_drop,:]
-        if logger: logger.info(f'Dropped {sum(id_drop)} rsp data points.')
+        print_fn(f'Dropped {sum(id_drop)} rsp data points.')
 
-    if logger: logger.info(f'rsp.shape {rsp.shape}')
+    print_fn(f'rsp.shape {rsp.shape}')
     groupby_src_and_print(rsp, logger=logger)        
         
-    if logger: logger.info('\nExtract specific sources.')
+    print_fn('\nExtract specific sources.')
     rsp['SOURCE'] = rsp['SOURCE'].apply(lambda x: x.lower())
     rsp.replace([np.inf, -np.inf], value=np.nan, inplace=True) # Replace -inf and inf with nan
 
     if src is not None:
         rsp = rsp[rsp['SOURCE'].isin(src)].reset_index(drop=True)
 
-    if logger: logger.info(f'rsp.shape {rsp.shape}')
+    print_fn(f'rsp.shape {rsp.shape}')
     groupby_src_and_print(rsp, logger=logger)
     return rsp
 
@@ -137,7 +143,8 @@ def load_rna(datadir, rna_norm, logger=None, keep_cells_only=True, float_type=np
     else:
         fname = f'combined_rnaseq_data_lincs1000_{rna_norm}'
         
-    if logger: logger.info('\nLoad RNA-Seq ... {datadir / fname}')
+    print_fn = get_print_func(logger)
+    print_fn('\nLoad RNA-Seq ... {datadir / fname}')
     rna = pd.read_csv(Path(datadir)/fname, sep='\t', low_memory=False, na_values=na_values, warn_bad_lines=True)
     rna = rna.astype(dtype={c: float_type for c in rna.columns[1:]})  # Cast features
     rna = rna.rename(columns={c: fea_prfx_dct['rna']+c for c in rna.columns[1:] if fea_prfx_dct['rna'] not in c}) # prefix rna gene names
@@ -149,16 +156,17 @@ def load_rna(datadir, rna_norm, logger=None, keep_cells_only=True, float_type=np
 
     # Impute missing values
     if impute:
-        if logger: logger.info('Impute NA values ...')
+        print_fn('Impute NA values ...')
         rna = impute_values(rna, logger=logger)
 
-    if logger: logger.info(f'rna.shape {rna.shape}')
+    print_fn(f'rna.shape {rna.shape}')
     return rna
         
 
 def load_dsc(filename, logger=None, dropna_th=0.4, float_type=np.float32, impute=True, plot=True, outdir=None):  
     """ Load drug descriptors. """
-    if logger: logger.info(f'\nLoad drug descriptors ... {DATADIR / filename}')
+    print_fn = get_print_func(logger)
+    print_fn(f'\nLoad drug descriptors ... {DATADIR / filename}')
     dsc = pd.read_csv(DATADIR/filename, sep='\t', low_memory=False, na_values=na_values, warn_bad_lines=True)
     dsc = dsc.astype(dtype={c: float_type for c in dsc.columns[1:]})  # Cast features
     dsc = dsc.rename(columns={c: fea_prfx_dct['dsc']+c for c in dsc.columns[1:] if fea_prfx_dct['dsc'] not in c}) # prefix drug desc names
@@ -169,18 +177,18 @@ def load_dsc(filename, logger=None, dropna_th=0.4, float_type=np.float32, impute
     # ------------------
     # dsc.nunique(dropna=True).value_counts()
     # dsc.nunique(dropna=True).sort_values()
-    if logger: logger.info('Drop descriptors with too many NA values ...')
+    print_fn('Drop descriptors with too many NA values ...')
     if plot and (outdir is not None):
         plot_dsc_na_dist(dsc=dsc, savepath=Path(outdir)/'dsc_hist_ratio_of_na.png')
     dsc = dropna(dsc, axis=1, th=dropna_th)
-    if logger: logger.info(f'dsc.shape {dsc.shape}')
+    print_fn(f'dsc.shape {dsc.shape}')
     # dsc.isna().sum().sort_values(ascending=False)
 
     # There are descriptors where there is a single unique value excluding NA (drop those)
-    if logger: logger.info('Drop descriptors that have a single unique value (excluding NAs) ...')
+    print_fn('Drop descriptors that have a single unique value (excluding NAs) ...')
     col_idx = dsc.nunique(dropna=True).values==1
     dsc = dsc.iloc[:, ~col_idx]
-    if logger: logger.info(f'dsc.shape {dsc.shape}')
+    print_fn(f'dsc.shape {dsc.shape}')
 
     # There are still lots of descriptors which have only a few unique values
     # we can categorize those values. e.g.: 564 descriptors have only 2 unique vals,
@@ -192,10 +200,10 @@ def load_dsc(filename, logger=None, dropna_th=0.4, float_type=np.float32, impute
 
     # Impute missing values
     if impute:
-        if logger: logger.info('Impute NA values ...')
+        print_fn('Impute NA values ...')
         dsc = impute_values(data=dsc, logger=logger)
 
-    if logger: logger.info(f'dsc.shape {dsc.shape}')
+    print_fn(f'dsc.shape {dsc.shape}')
     return dsc
 
 

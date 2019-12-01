@@ -61,7 +61,7 @@ def fit_power_law_3prm(x, y, p0:list=[30, -0.5, 0.06]):
 def plot_lrn_crv_new(x, y, yerr=None, metric_name:str='score',
                      xtick_scale:str='log2', ytick_scale:str='log2',
                      xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
-                     marker='.', color=None, alpha=0.7, label:str=None, ax=None):
+                     ls='-', marker='.', color=None, alpha=0.7, label:str=None, ax=None):
     
     """ This function takes train set size in x and score in y, and generates a learning curve plot.
     Returns:
@@ -79,9 +79,9 @@ def plot_lrn_crv_new(x, y, yerr=None, metric_name:str='score',
     # Plot raw data
     # p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
     if yerr is None:
-        p = ax.plot(x, y, marker=marker, ls='-', alpha=alpha, label=label);
+        p = ax.plot(x, y, marker=marker, ls=ls, color=color, alpha=alpha, label=label);
     else:
-        p = ax.errorbar(x, y, yerr, marker=marker, ls='-', alpha=alpha, label=label);
+        p = ax.errorbar(x, y, yerr, marker=marker, ls=ls, color=color, alpha=alpha, label=label);
     c = p[0].get_color()
 
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
@@ -96,8 +96,8 @@ def plot_lrn_crv_new(x, y, yerr=None, metric_name:str='score',
         
     if ylim is not None: ax.set_ylim(ylim)
     if xlim is not None: ax.set_ylim(xlim)
-    if title is None: title='Learning Curve'
-    ax.set_title(title)
+    if title is not None:
+        ax.set_title(title)
     
     # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
     if label is not None:
@@ -107,7 +107,7 @@ def plot_lrn_crv_new(x, y, yerr=None, metric_name:str='score',
 
 
 
-def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
+def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_name:str='Score',
                            xtick_scale:str='log2', ytick_scale:str='log2',
                            xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
                            marker='.', color=None, alpha=0.7, label:str='Data', ax=None):
@@ -121,6 +121,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     """
     x = x.ravel()
     y = y.ravel()
+    assert len(x)==len(y), 'Length of vectors x and y must be the same. Got x={len(x)}, y={len(y)}.'
     
     # Init figure
     fontsize = 13
@@ -129,8 +130,11 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
         fig, ax = plt.subplots(figsize=figsize)
     
     # Plot raw data
-    p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
-    c = p[0].get_color()
+    if plot_raw:
+        p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
+        c = p[0].get_color()
+    else:
+        c = color
 
     # Fit power-law (3 params)
     fit_prms = fit_power_law_3prm(x, y)
@@ -147,7 +151,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
 
     # Plot fit
     # eq = r"e(m)={:.2f}$m^{:.2f}$ + {:.2f}".format(power_law_params['alpha'], power_law_params['beta'], power_law_params['gamma'])
-    label_fit = '{} fit; RMSE={:.4f}; a={:.2f}; b={:.2f}'.format(label, rmse, fit_prms['alpha'], fit_prms['beta'])
+    label_fit = '{} Fit; RMSE={:.4f}; a={:.2f}; b={:.2f}'.format(label, rmse, fit_prms['alpha'], fit_prms['beta'])
     # if plot_fit: ax.plot(x, yfit, '--', color=c, label=f'{label} fit; RMSE={rmse:.4f}; ' + eq);
     if plot_fit: ax.plot(x, yfit, '--', color=c, label=label_fit);
         
@@ -180,8 +184,8 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
     # ax.set_title(r"$\varepsilon_{mae}(m) = \alpha m^{\beta} + \gamma$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}, $\gamma$={power_law_params['gamma']:.2f}");
     if ylim is not None: ax.set_ylim(ylim)
     if xlim is not None: ax.set_ylim(xlim)
-    if title is None: title='Learning Curve (power-law)'
-    ax.set_title(title)
+    if title is not None:
+        ax.set_title(title)
     
     # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
     ax.legend(frameon=True, fontsize=legend_fontsize, bbox_to_anchor=(1.02, 1), loc='upper left')
@@ -190,23 +194,28 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, metric_name:str='score',
 
 
 
-def lrn_crv_power_law_extrapolate(x, y, m0:int, 
-        plot_fit:bool=True, metric_name:str='score',
+def lrn_crv_power_law_extrapolate(x, y, # m0:int,
+        p_et:int=1,
+        plot_fit:bool=True, plot_raw_it:bool=True, metric_name:str='Score',
         xtick_scale:str='log2', ytick_scale:str='log2',
         xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
-        label:str='Data', ax=None):
+        label:str='Data', label_et:str=None, ax=None):
     
     """ This function takes train set size in x and score in y, and generates a learning curve plot.
     The power-law model is fitted to the learning curve data.
     Args:
+        plot_raw_it : wether to plot the raw that was used for curve fitting
         m0 : the number of shards to use for curve fitting (iterpolation)
+        p_et : number of points to extrapolate
         ax : ax handle from existing plot (this allows to plot results from different runs for comparison)
         pwr_law_params : power-law model parameters after fitting
     """
     x = x.ravel()
     y = y.ravel()
+    assert len(x)==len(y), 'Length of vectors x and y must be the same. Got x={len(x)}, y={len(y)}.'
     
     # Data for curve fitting (interpolation)
+    m0 = len(x) - p_et
     x_it = x[:m0]
     y_it = y[:m0]
 
@@ -215,13 +224,13 @@ def lrn_crv_power_law_extrapolate(x, y, m0:int,
     y_et = y[m0:]
 
     # Fit power-law (3 params)
-    power_law_params = fit_power_law_3prm(x_it, y_it)
+    fit_prms = fit_power_law_3prm(x_it, y_it)
 
     # Plot fit for the entire available range
-    y_it_fit = power_law_func_3prm(x_it, **power_law_params)
-    y_et_fit = power_law_func_3prm(x_et, **power_law_params) # extrapolate using model from interpolation
-    y_fit = power_law_func_3prm(x, **power_law_params)
-
+    y_it_fit = power_law_func_3prm(x_it, **fit_prms)
+    y_et_fit = power_law_func_3prm(x_et, **fit_prms) # extrapolate using model from interpolation
+    y_fit = power_law_func_3prm(x, **fit_prms)
+    
     # Compute goodness-of-fit
     # rmse_it = sqrt( metrics.mean_squared_error(y_it, y_it_fit) )
     # rmse_et = sqrt( metrics.mean_squared_error(y_et, y_et_fit) )
@@ -230,16 +239,33 @@ def lrn_crv_power_law_extrapolate(x, y, m0:int,
     
     # Init figure
     fontsize = 13
-    if ax is None: fig, ax = plt.subplots(figsize=figsize)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+        
+    # Plot raw points that are used for interpolation
+    if plot_raw_it:
+        # p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
+        p = ax.plot(x_it, y_it, marker='.', ls='',  markerfacecolor=None, markeredgecolor='k', label=f'{label} for curve fitting');
+        c_it = p[0].get_color()
+        
+        # p = ax.plot(x_et, y_et, marker='o', ls='',  markerfacecolor=None, markeredgecolor='k', label=label=f'{label} for extrapolation');
+        # c_et = p[0].get_color()
+    else:
+        pass
+        # c = color        
     
     # Plot raw data
-    ax.plot(x_it, y_it, '.', color=None, markeredgecolor='k', label=f'{label} for interpolation');
-    ax.plot(x_et, y_et, 'o', color=None, markeredgecolor='k', label=f'{label} for extrapolation');
+    # Plot raw points that are used for extrapolation
+    # ax.plot(x_it, y_it, '.', color=None, markeredgecolor='k', label=f'{label} for interpolation');
+    if label_et is None:
+        ax.plot(x_et, y_et, 'o', color=None, markerfacecolor='r', markeredgecolor='k', label=f'{label} for extrapolation');
+    else:
+        ax.plot(x_et, y_et, 'o', color=None, markerfacecolor='r', markeredgecolor='k', label=label_et);
 
     # Plot fit
     if plot_fit: ax.plot(x, y_fit, '--', color=None, markeredgecolor='k', label=f'{label} Fit'); 
-    if plot_fit: ax.plot(x_it, y_it_fit, '--', color=None, label=f'{label} interpolation (MAE {mae_it:.7f})');
-    if plot_fit: ax.plot(x_et, y_et_fit, '--', color=None, label=f'{label} extrapolation (MAE {mae_et:.7f})');
+    # if plot_fit: ax.plot(x_it, y_it_fit, '--', color=None, label=f'{label} interpolation (MAE {mae_it:.7f})');
+    # if plot_fit: ax.plot(x_et, y_et_fit, '--', color=None, label=f'{label} extrapolation (MAE {mae_et:.7f})');
         
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
     basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)
@@ -251,7 +277,8 @@ def lrn_crv_power_law_extrapolate(x, y, m0:int,
     ax.set_ylabel(f'{ylabel} ({ylabel_scale})', fontsize=fontsize)
     if 'log' in ylabel_scale.lower(): ax.set_yscale('log', basey=basey)        
     
-    eq = r"$\varepsilon(m) = \alpha m^{\beta}$" + rf"; $\alpha$={power_law_params['alpha']:.2f}, $\beta$={power_law_params['beta']:.2f}"
+    # eq = r"$\varepsilon(m) = \alpha m^{\beta}$" + rf"; $\alpha$={fit_prms['alpha']:.2f}, $\beta$={fit_prms['beta']:.2f}"
+    eq = None
     xloc = x.min() + 0.01*(x.max() - x.min())
     yloc = y.min() + 0.9*(y.max() - y.min())
     ax.text(xloc, yloc, eq,
@@ -260,12 +287,13 @@ def lrn_crv_power_law_extrapolate(x, y, m0:int,
 
     if ylim is not None: ax.set_ylim(ylim)
     if xlim is not None: ax.set_ylim(xlim)
-    if title is None: title='Learning Curve (power-law)'
+    if title is not None:
+        ax.set_title(title)        
     ax.set_title(title)
     
     ax.legend(frameon=True, fontsize=fontsize, bbox_to_anchor=(1.04, 1), loc='upper left')
     ax.grid(True)
-    return ax, power_law_params
+    return ax, fit_prms, mae_et
 
 
 

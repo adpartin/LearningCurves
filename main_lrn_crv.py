@@ -51,6 +51,7 @@ def parse_args(args):
 
     # Global outdir
     parser.add_argument('-gout', '--global_outdir', default=None, type=str, help='Gloabl outdir. In this path another dir is created for the run (default: None).')
+    parser.add_argument('-rout', '--run_outdir', default=None, type=str, help='Run outdir. This is the for the specific run (default: None).')
 
     # Select target to predict
     parser.add_argument('-t', '--target_name', default='AUC', type=str, choices=['AUC', 'AUC1'], help='Name of target variable (default: AUC).')
@@ -67,7 +68,7 @@ def parse_args(args):
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
     parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str,
                         choices=['lgb_reg', 'rf_reg', 'nn_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_attn', 'nn_reg_layer_less', 'nn_reg_layer_more',
-                                 'nn_reg_neuron_less', 'nn_reg_neuron_more'], help='ML model (default: lgb_reg).')
+                                 'nn_reg_neuron_less', 'nn_reg_neuron_more', 'nn_reg_res', 'nn_reg_mini'], help='ML model (default: lgb_reg).')
 
     # LightGBM params
     parser.add_argument('--gbm_leaves', default=31, type=int, help='Maximum tree leaves for base learners (default: 31).')
@@ -85,6 +86,7 @@ def parse_args(args):
     parser.add_argument('-sc', '--scaler', default='stnd', type=str, choices=['stnd', 'minmax', 'rbst'],
             help='Feature normalization method (stnd, minmax, rbst) (default: stnd).')
     parser.add_argument('--batchnorm', action='store_true', help='Whether to use batch normalization (default: False).')
+    # parser.add_argument('--residual', action='store_true', help='Whether to use residual conncetion (default: False).')
     # parser.add_argument('--initializer', default='he', type=str, choices=['he', 'glorot'], help='Keras initializer name (default: he).')
 
     parser.add_argument('--opt', default='sgd', type=str, choices=['sgd', 'adam'], help='Optimizer name (default: sgd).')
@@ -115,7 +117,8 @@ def parse_args(args):
     parser.add_argument('--seed', default=0, type=int, help='Default: 0.')
 
     # Parse args
-    args = parser.parse_args(args)
+    # args = parser.parse_args(args)
+    args, other_args = parser.parse_known_args(args)
     return args
         
 
@@ -134,7 +137,8 @@ def create_outdir(outdir, args, src):
     t = [t.year, '-', t.month, '-', t.day, '_', 'h', t.hour, '-', 'm', t.minute]
     t = ''.join([str(i) for i in t])
     
-    l = [args['model_name']] + [('cvf'+str(args['cv_folds']))] + args['cell_fea'] + args['drug_fea'] + [args['target_name']] 
+    # l = [args['model_name']] + [('cvf'+str(args['cv_folds']))] + args['cell_fea'] + args['drug_fea'] + [args['target_name']] 
+    l = [args['model_name']] + args['cell_fea'] + args['drug_fea'] + [args['target_name']] 
     if args['clr_mode'] is not None: l = [args['clr_mode']] + l
     if 'nn' in args['model_name']: l = [args['opt']] + l
     l = [s.lower() for s in l]
@@ -189,11 +193,12 @@ def run(args):
     dirpath = verify_dirpath(args['dirpath'])
 
     # Global outdir
-    # OUTDIR = filepath/'./' if args['global_outdir'] is None else Path(args['global_outdir'])
-    if args['global_outdir'] is None:
-        OUTDIR = filepath/'./'
-    else:
-        OUTDIR = Path(args['global_outdir']).absolute()
+    OUTDIR = filepath/'./' if args['global_outdir'] is None else Path(args['global_outdir']).absolute()
+    # if args['global_outdir'] is None:
+    #     OUTDIR = filepath/'./'
+    # else:
+    #     OUTDIR = Path(args['global_outdir']).absolute()
+    
     
 
     clr_keras_kwargs = {'mode': args['clr_mode'], 'base_lr': args['clr_base_lr'],
@@ -229,15 +234,21 @@ def run(args):
     te_id = read_data_file( dirpath/'{}fold_te_id.csv'.format(args['cv_folds']) )
 
     # src = str(dirpath.parent).split('/')[-1].split('.')[0]
-    src = str(dirpath.parent).split('/')[-1].split('.')[1]
+    # src = str(dirpath.parent).split('/')[-1].split('.')[1]
+    s = [s for s in str(dirpath.parent).split('/') if 'data.' in s][0]
+    src = s.split('.')[1]
 
 
     # -----------------------------------------------
     #       Create outdir and logger
     # -----------------------------------------------
-    outdir = create_outdir(OUTDIR, args, src)
-    args['outdir'] = outdir
-    lg = Logger(outdir/'logfile.log')
+    if args['run_outdir'] is None:
+        args['outdir'] = create_outdir(OUTDIR, args, src)
+    else:
+        args['outdir'] = OUTDIR / args['run_outdir']
+        os.makedirs(args['outdir'])
+    # args['outdir'] = outdir
+    lg = Logger(args['outdir']/'logfile.log')
     lg.logger.info(f'File path: {filepath}')
     lg.logger.info(f'\n{pformat(args)}')
     
@@ -392,7 +403,7 @@ def run(args):
     #====================================
 
     # Dump args
-    dump_dict(args, outpath=outdir/'args.txt')        
+    dump_dict(args, outpath=args['outdir']/'args.txt')        
         
 
     # -----------------------------------------------
@@ -459,8 +470,9 @@ def run(args):
 def main(args):
     args = parse_args(args)
     args = vars(args)
-    run(args)
+    score = run(args)
     print('Done.')
+    return score
     
 
 if __name__ == '__main__':

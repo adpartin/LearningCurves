@@ -1,6 +1,7 @@
 """
 A batch prcoessing code that calls main_lrn_crv.py with the same set of parameters
-but different data_splits_seed#
+but different data_splits_seed#.
+The use need to specify the dir to where the data_splits_seed* dirs are located.
 """
 import warnings
 warnings.filterwarnings('ignore')
@@ -22,9 +23,9 @@ def main(args):
 
     # glob all files data_splits_seed
     # dirs = Path(dirpath).glob('data_splits_seed*')
-    dirs = glob(os.path.join(dirpath, 'data_splits_seed*'))
-    for dpath in dirs:
-        main_lrn_crv.main([ '--dirpath', str(dpath), *args[1:] ])
+    dirs = glob(os.path.join(dirpath, 'data_splits_*'))
+    for i, dpath in enumerate(dirs):
+        main_lrn_crv.main([ '--dirpath', str(dpath), '--seed', str(i), *args[1:] ])
 
     runtime = time() - t0
     print('Runtime: {} hrs.'.format(runtime/3600))

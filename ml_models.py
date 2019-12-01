@@ -74,10 +74,16 @@ def get_model(model_name, init_kwargs=None):
     elif model_name == 'nn_reg0':
         model = NN_REG0(**init_kwargs)
     elif model_name == 'nn_reg1':
-        model = NN_REG1(**init_kwargs)        
+        model = NN_REG1(**init_kwargs)
+
+    elif model_name == 'nn_reg_mini':
+        model = NN_REG_MINI(**init_kwargs)
         
     elif model_name == 'nn_reg_attn':
-        model = NN_REG_ATTN(**init_kwargs)        
+        model = NN_REG_ATTN(**init_kwargs)
+
+    elif model_name == 'nn_reg_res':
+        model = NN_REG_RES(**init_kwargs)
         
     elif model_name == 'nn_reg_layer_less':
         model = NN_REG_L_LESS(**init_kwargs)
@@ -239,17 +245,78 @@ class BaseMLModel():
     def build_dense_block(self, layers, inputs, batchnorm=True, name=None):
         """ This function only applicable to keras NNs. """
         prfx = '' if name is None else f'{name}.'
+        x = inputs
+        
         for i, l_size in enumerate(layers):
             l_name = prfx + f'fc{i+1}.{l_size}'
-            if i == 0:
-                x = Dense(l_size, kernel_initializer=self.initializer, name=l_name)(inputs)
-            else:
-                x = Dense(l_size, kernel_initializer=self.initializer, name=l_name)(x)
-            if batchnorm: x = BatchNormalization(name=prfx+f'bn{i+1}')(x)
+            x = Dense(l_size, kernel_initializer=self.initializer, name=l_name)(x)
+#             if i == 0:
+#                 x = Dense(l_size, kernel_initializer=self.initializer, name=l_name)(inputs)
+#             else:
+#                 x = Dense(l_size, kernel_initializer=self.initializer, name=l_name)(x)
+            if batchnorm:
+                x = BatchNormalization(name=prfx+f'bn{i+1}')(x)
             x = Activation('relu', name=prfx+f'a{i+1}')(x)
             x = Dropout(self.dr_rate, name=prfx+f'drp{i+1}.{self.dr_rate}')(x)        
         return x      
     
+
+#     def build_dense_res_block(self, layers, inputs, batchnorm=True, residual=False, name=None):
+#         """ This function only applicable to keras NNs.
+#         residual connection --> batchnorm --> activation
+#         """
+#         prfx = '' if name is None else f'{name}.'
+#         x = inputs
+        
+#         for i, l_size in enumerate(layers):
+#             l_name = prfx + f'res_fc{i+1}.{l_size}'
+            
+#             x_bypass = x
+
+#             x = Dense(l_size, kernel_initializer=self.initializer, name=l_name)(x)
+        
+#             if residual:
+#                 x = keras.layers.add([x_bypass, x], name=prfx+f'res_conn{i+1}')
+            
+#             if batchnorm:
+#                 x = BatchNormalization(name=prfx+f'bn{i+1}')(x)
+                
+#             x = Activation('relu', name=prfx+f'a{i+1}')(x)
+            
+#             x = Dropout(self.dr_rate, name=prfx+f'drp{i+1}.{self.dr_rate}')(x)        
+#         return x
+
+    def build_dense_res_block(self, inputs, stage:int, skips=1, batchnorm=True, name=None):
+        """ This function only applicable to keras NNs.
+        residual connection --> batchnorm --> activation
+        """
+        prfx = '' if name is None else f'{name}.'
+        x = inputs
+        x_bypass = x
+        
+        for i in range(skips):
+            l_size = int(x.get_shape()[-1])
+            l_name = prfx + f'res{stage}_fc{i+1}.{l_size}'
+
+            x = Dense(l_size, kernel_initializer=self.initializer)(x)
+                    
+            if batchnorm:
+                x = BatchNormalization()(x)
+                
+            # x = Activation('relu', name=prfx+f'a{i+1}')(x)
+            x = Activation('relu')(x)
+            # x = Dropout(self.dr_rate)(x)        
+            
+        x = keras.layers.add([x_bypass, x], name=prfx+f'res_conn{stage}')
+        
+        if batchnorm:
+            x = BatchNormalization()(x)
+                
+        x = Activation('relu')(x)    
+        x = Dropout(self.dr_rate)(x)        
+        
+        
+        return x
     
     def get_optimizer(self):
         if self.opt_name == 'sgd':
@@ -288,6 +355,32 @@ class NN_REG0(BaseMLModel):
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
         self.model = model
         
+        
+class NN_REG_MINI(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN.
+    """
+    model_name = 'nn_reg0'
+
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+        self.lr = lr
+
+        layers = [1000, 1000, 500, 250, 125, 60, 30]
+        layers = [l//2 for l in layers]
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        opt = self.get_optimizer()
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model        
+        
 
         
 class NN_REG1(BaseMLModel):
@@ -313,7 +406,39 @@ class NN_REG1(BaseMLModel):
         
         opt = self.get_optimizer()
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
-        self.model = model        
+        self.model = model  
+        
+        
+        
+class NN_REG_RES(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN with residual connection.
+    """
+    model_name = 'nn_reg1'
+
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+        self.lr = lr
+
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        
+        # dense_layers = [1000, 1000, 500, 250, 125, 60]
+        dense_layers = [1000, 500, 250]
+                
+        x = self.build_dense_block(dense_layers, inputs, batchnorm=batchnorm)
+        x = self.build_dense_res_block(x, stage=1, skips=1, batchnorm=batchnorm)
+        # x = self.build_dense_res_block(x, stage=2, skips=1, batchnorm=batchnorm)
+        # x = self.build_dense_res_block(x, stage=3, skips=1, batchnorm=batchnorm, residual=residual)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        opt = self.get_optimizer()
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model      
 # ---------------------------------------------------------
 
         
@@ -591,8 +716,8 @@ class RF_REGRESSOR(BaseMLModel):
     def __init__(self, n_estimators=100, criterion='mse',
                  max_depth=None, min_samples_split=2,
                  max_features='sqrt',
-                 bootstrap=True, oob_score=True, verbose=0, 
-                 n_jobs=1, random_state=None):               
+                 bootstrap=True, oob_score=False, verbose=0, 
+                 n_jobs=4, random_state=None):               
 
         self.model = RandomForestRegressor(
             n_estimators=n_estimators,
@@ -609,7 +734,7 @@ class RF_REGRESSOR(BaseMLModel):
 
     def dump_model(self, outdir='.'):
         joblib.dump(self.model, filename=os.path.join(outdir, 'model.' + RF_REGRESSOR.model_name + '.pkl'))
-        # model_ = joblib.load(filename=os.path.join(run_outdir, 'lgb_reg_model.pkl'))        
+        # model_loaded = joblib.load(filename=os.path.join(run_outdir, 'lgb_reg_model.pkl'))        
 
 
 
