@@ -36,6 +36,7 @@ filepath = Path(__file__).resolve().parent
 def parse_args(args):
     parser = argparse.ArgumentParser(description='Generate summary table from serial HPO run of learning curves.')
     parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to the main HPO dir (not Theta/Summit) (default: None).')
+    parser.add_argument('-prf', '--prefix_dir', default=None, type=str, help='Prefix of the individual runs (default: None).')
     args = parser.parse_args(args)
     return args
 
@@ -118,9 +119,9 @@ def parse_and_agg_scores(run_path, hp=[], missing_runs=[], scores_fname='scores.
     return hp, missing_runs
 
 
-def get_df_from_upf_runs(hpo_dir, scores_fname='scores.csv'):
+def get_df_from_upf_runs(hpo_dir, scores_fname='scores.csv', prfx_dir='run_'):
     """ Aggregate results from all HPO runs into a dataframe. """
-    prfx_dir = 'run_'  # each run starts with this prefix "id_"
+    # prfx_dir = 'run_'  # each run starts with this prefix "id_"
     all_runs = sorted(glob(str(hpo_dir/f'{prfx_dir}*'))) 
     print('Total runs {}'.format( len(all_runs) ))
     
@@ -173,7 +174,7 @@ def run(args):
     # scores_fname = 'lrn_crv_scores.csv'
     scores_fname = 'scores.csv'
     
-    hp = get_df_from_upf_runs(hpo_dir=hpo_dir, scores_fname=scores_fname)
+    hp = get_df_from_upf_runs(hpo_dir=hpo_dir, scores_fname=scores_fname, prfx_dir=args['prefix_dir'])
     
     hp.to_csv(hpo_dir/'hpo_all.csv', index=False)
     

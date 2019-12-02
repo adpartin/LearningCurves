@@ -163,6 +163,8 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_
     # https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0170920&type=printable
     # https://www.mathworks.com/help/curvefit/evaluating-goodness-of-fit.html --> based on this we should use SSE or RMSE
     rmse = sqrt( metrics.mean_squared_error(y, yfit) )
+    mae = metrics.mean_absolute_error(y, yfit)
+    gof = {'rmse': rmse, 'mae': mae}
 
     # Plot fit
     # eq = r"e(m)={:.2f}$m^{:.2f}$ + {:.2f}".format(power_law_params['alpha'], power_law_params['beta'], power_law_params['gamma'])
@@ -205,7 +207,8 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_
     # Location of legend --> https://stackoverflow.com/questions/4700614/how-to-put-the-legend-out-of-the-plot/43439132#43439132
     ax.legend(frameon=True, fontsize=legend_fontsize, bbox_to_anchor=(1.02, 1), loc='upper left')
     ax.grid(True)
-    return ax, fit_prms, rmse
+    # return ax, fit_prms, rmse
+    return ax, fit_prms, gof
 
 
 
