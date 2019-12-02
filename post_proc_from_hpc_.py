@@ -31,14 +31,11 @@ from sklearn.preprocessing import LabelEncoder
 
 # File path
 filepath = Path(__file__).resolve().parent
-# utils_path = os.path.abspath(os.path.join('../'))
-# sys.path.append(utils_path)
 
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description='Generate summary table from serial HPO run of learning curves.')
     parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to the main HPO dir (not Theta/Summit) (default: None).')
-    # parser.add_argument('--scr_fname', default=None, type=str, help='File name of the scores file (default: scores_tmp.csv).')
     args = parser.parse_args(args)
     return args
 
@@ -136,22 +133,7 @@ def get_df_from_upf_runs(hpo_dir, scores_fname='scores.csv'):
         run_path = Path(r)
         print(str(run_path))
 
-#         sz_dirs = glob(str( run_path/'**'/'cv0_sz*' ), recursive=True)
-#         for tr_dir in sorted(sz_dirs):
-#         path_scores = Path(sz_dirs[0])/'scores.csv'
-#         if not path_scores.exists():
-#             continue
-#         else:
-#             scores = pd.read_csv(path_scores)
-            
-        # process scores_fname (scores.csv)
-        
-        
-        # Parse args from the current run into dict
-        # args = parse_args_file( run_path/'args.txt' )
-
         # Parse scores, and agg
-        # hp = parse_and_agg_scores(run_path, args, hp=hp, scores_fname=scores_fname)
         hp, missing_runs = parse_and_agg_scores(run_path, hp=hp, missing_runs=missing_runs, scores_fname=scores_fname)
 
         if (i+1)%50 == 0: print('Done with {}'.format(i+1))
@@ -160,7 +142,7 @@ def get_df_from_upf_runs(hpo_dir, scores_fname='scores.csv'):
     hp = pd.DataFrame(hp)
     
     # Dump missing runs into text file
-    with open(hpo_dir/'missing_runs', 'w') as f:
+    with open(hpo_dir/'missing_runs.txt', 'w') as f:
         for line in missing_runs:
             f.write(str(line)+'\n')
 

@@ -66,20 +66,16 @@ def run(args):
                  }
 
     arg_sets = read_json( args['json_plan'] )
-        
-    # prm_grid = {'batch_size': BATCH, 'batchnorm': BATCHNORM, 'dr_rate': DR_RATE, 'lr': LR}
-    # sets = list(ParameterGrid(prm_grid))
+
     print('Total HP sets', len(arg_sets))
     digits = len(str(len(arg_sets)))
     
     agg_runs = []
     for i, item in enumerate(arg_sets):
-        # arg_list = args + dict_to_argv_list( item )
         item['run_outdir'] = arg_sets[i]['id'] # str('run_' + f'{i}'.zfill(digits))
         item.update(other_args)
         arg_list = dict_to_argv_list( item )
         mae = main_lrn_crv.main( arg_list )
-        # hp_set.update(other_args)
         # mae = main_lrn_crv.run( hp_set )
         item['mae'] = mae
 

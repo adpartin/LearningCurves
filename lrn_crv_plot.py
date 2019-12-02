@@ -1,5 +1,6 @@
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import sklearn
@@ -51,10 +52,20 @@ def power_law_func_3prm(x, alpha, beta, gamma):
     
 def fit_power_law_3prm(x, y, p0:list=[30, -0.5, 0.06]):
     """ Fit learning curve data to power-law (3 params). """
-    prms, prms_cov = optimize.curve_fit(power_law_func_3prm, x, y, p0=p0)
-    prms_dct = {}
-    prms_dct['alpha'], prms_dct['beta'], prms_dct['gamma'] = prms[0], prms[1], prms[2]
-    return prms_dct
+    try:
+        prms, prms_cov = optimize.curve_fit(power_law_func_3prm, x, y, p0=p0)
+        prms_dct = {}
+        prms_dct['alpha'], prms_dct['beta'], prms_dct['gamma'] = prms[0], prms[1], prms[2]
+        return prms_dct
+    except:
+        # print('Could not fit power-law.')
+        warnings.warn('Could not fit power-law.')
+        return None
+        
+    # prms, prms_cov = optimize.curve_fit(power_law_func_3prm, x, y, p0=p0)
+    # prms_dct = {}
+    # prms_dct['alpha'], prms_dct['beta'], prms_dct['gamma'] = prms[0], prms[1], prms[2]
+    # return prms_dct
 
 
 
@@ -138,6 +149,10 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_
 
     # Fit power-law (3 params)
     fit_prms = fit_power_law_3prm(x, y)
+    if fit_prms is None:
+        return None
+    
+    # Compute the fit
     yfit = power_law_func_3prm(x, **fit_prms)
     
     # Compute goodness-of-fit
@@ -225,6 +240,8 @@ def lrn_crv_power_law_extrapolate(x, y, # m0:int,
 
     # Fit power-law (3 params)
     fit_prms = fit_power_law_3prm(x_it, y_it)
+    if fit_prms is None:
+        return None    
 
     # Plot fit for the entire available range
     y_it_fit = power_law_func_3prm(x_it, **fit_prms)

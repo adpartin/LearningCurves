@@ -26,4 +26,4 @@ def main(args):
 
 main(sys.argv[1:])
 
-# python batch_proc_gen_data_splits.py -dp data.gdsc.dsc.rna.raw/
+# python batch_proc_gen_data_splits.py  -dp data.gdsc.dsc.rna.raw/  --split_on cell

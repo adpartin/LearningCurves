@@ -132,22 +132,23 @@ def print_intersection_on_var(df, tr_id, vl_id, te_id, grp_col='CELL', logger=No
     """ Print intersection between train, val, and test datasets with respect
     to grp_col column if provided. df is usually metadata.
     """
-    tr_grp_unq = set(df.loc[tr_id, grp_col])
-    vl_grp_unq = set(df.loc[vl_id, grp_col])
-    te_grp_unq = set(df.loc[te_id, grp_col])
-    print_fn = get_print_func(logger)
-#     logger.info(f'\tTotal intersections on {grp_col} btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}')
-#     logger.info(f'\tTotal intersections on {grp_col} btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}')
-#     logger.info(f'\tTotal intersections on {grp_col} btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}')
-#     logger.info(f'\tUnique {grp_col} in tr: {len(tr_grp_unq)}')
-#     logger.info(f'\tUnique {grp_col} in vl: {len(vl_grp_unq)}')
-#     logger.info(f'\tUnique {grp_col} in te: {len(te_grp_unq)}')    
-    print_fn(f'\tTotal intersections on {grp_col} btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}')
-    print_fn(f'\tTotal intersections on {grp_col} btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}')
-    print_fn(f'\tTotal intersections on {grp_col} btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}')
-    print_fn(f'\tUnique {grp_col} in tr: {len(tr_grp_unq)}')
-    print_fn(f'\tUnique {grp_col} in vl: {len(vl_grp_unq)}')
-    print_fn(f'\tUnique {grp_col} in te: {len(te_grp_unq)}')    
+    if grp_col in df.columns:
+        tr_grp_unq = set(df.loc[tr_id, grp_col])
+        vl_grp_unq = set(df.loc[vl_id, grp_col])
+        te_grp_unq = set(df.loc[te_id, grp_col])
+        print_fn = get_print_func(logger)
+    #     logger.info(f'\tTotal intersections on {grp_col} btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}')
+    #     logger.info(f'\tTotal intersections on {grp_col} btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}')
+    #     logger.info(f'\tTotal intersections on {grp_col} btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}')
+    #     logger.info(f'\tUnique {grp_col} in tr: {len(tr_grp_unq)}')
+    #     logger.info(f'\tUnique {grp_col} in vl: {len(vl_grp_unq)}')
+    #     logger.info(f'\tUnique {grp_col} in te: {len(te_grp_unq)}')    
+        print_fn(f'\tTotal intersections on {grp_col} btw tr and vl: {len(tr_grp_unq.intersection(vl_grp_unq))}')
+        print_fn(f'\tTotal intersections on {grp_col} btw tr and te: {len(tr_grp_unq.intersection(te_grp_unq))}')
+        print_fn(f'\tTotal intersections on {grp_col} btw vl and te: {len(vl_grp_unq.intersection(te_grp_unq))}')
+        print_fn(f'\tUnique {grp_col} in tr: {len(tr_grp_unq)}')
+        print_fn(f'\tUnique {grp_col} in vl: {len(vl_grp_unq)}')
+        print_fn(f'\tUnique {grp_col} in te: {len(te_grp_unq)}')    
 
 
 
@@ -195,11 +196,14 @@ def run(args):
     
     lg.logger.info('Total DD: {}'.format( len([c for c in xdata.columns if 'DD_' in c]) ))
     lg.logger.info('Total GE: {}'.format( len([c for c in xdata.columns if 'GE_' in c]) ))
-    lg.logger.info('Unique cells: {}'.format( meta['CELL'].nunique() ))
-    lg.logger.info('Unique drugs: {}'.format( meta['DRUG'].nunique() ))
+    if 'CELL' in meta.columns:
+        lg.logger.info('Unique cells: {}'.format( meta['CELL'].nunique() ))
+    if 'DRUG' in meta.columns:
+        lg.logger.info('Unique drugs: {}'.format( meta['DRUG'].nunique() ))
     # cnt_fea(df, fea_sep='_', verbose=True, logger=lg.logger)
-
-    plot_hist(meta['AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_all.png')
+    
+    if 'AUC' in meta.columns:
+        plot_hist(meta['AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_all.png')
     
     
     # -----------------------------------------------
@@ -262,12 +266,13 @@ def run(args):
     grp_col = 'CELL' if split_on is None else split_on
     print_intersection_on_var(meta, tr_id=tr_id, vl_id=vl_id, te_id=te_id, grp_col=grp_col, logger=lg.logger)
 
-    plot_hist(meta.loc[tr_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_train.png')
-    plot_hist(meta.loc[vl_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_val.png')
-    plot_hist(meta.loc[te_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_test.png')
+    if 'AUC' in meta.columns:
+        plot_hist(meta.loc[tr_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_train.png')
+        plot_hist(meta.loc[vl_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_val.png')
+        plot_hist(meta.loc[te_id, 'AUC'], var_name='AUC', fit=None, bins=100, path=outdir/'AUC_hist_test.png')
             
-    plot_ytr_yvl_dist(ytr=meta.loc[tr_id, 'AUC'], yvl=meta.loc[vl_id, 'AUC'],
-                      title='ytr_yvl_dist', outpath=outdir/'ytr_yvl_dist.png')    
+        plot_ytr_yvl_dist(ytr=meta.loc[tr_id, 'AUC'], yvl=meta.loc[vl_id, 'AUC'],
+                          title='ytr_yvl_dist', outpath=outdir/'ytr_yvl_dist.png')    
     
             
     # -----------------------------------------------

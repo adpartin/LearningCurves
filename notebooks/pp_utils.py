@@ -73,7 +73,7 @@ def plot_lc_multi_runs(runs:list, labels:list=None, metric_name:str='mean_absolu
             continue
         
         plot_kwargs = {'x': x, 'y': y, 'metric_name': metric_name, 'figsize': figsize,
-                       'xtick_scale': ytick_scale, 'ytick_scale': ytick_scale,
+                       'xtick_scale': xtick_scale, 'ytick_scale': ytick_scale,
                        'ls': '--', 'marker': '.', 'alpha': 0.7,
                        #'title': 'Learning Curves'
                       }        
@@ -82,7 +82,7 @@ def plot_lc_multi_runs(runs:list, labels:list=None, metric_name:str='mean_absolu
             y_agg = y
         else:
             y_agg += y
-        
+
         if not shadow:
             # Plot data from each loaded run
             if labels is None:
