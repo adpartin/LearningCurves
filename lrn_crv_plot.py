@@ -213,7 +213,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_
 
 
 def lrn_crv_power_law_extrapolate(x, y, # m0:int,
-        p_et:int=1,
+        n_pnts_ext:int=1,
         plot_fit:bool=True, plot_raw_it:bool=True, metric_name:str='Score',
         xtick_scale:str='log2', ytick_scale:str='log2',
         xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
@@ -224,7 +224,7 @@ def lrn_crv_power_law_extrapolate(x, y, # m0:int,
     Args:
         plot_raw_it : wether to plot the raw that was used for curve fitting
         m0 : the number of shards to use for curve fitting (iterpolation)
-        p_et : number of points to extrapolate
+        n_pnts_ext : number of points to extrapolate
         ax : ax handle from existing plot (this allows to plot results from different runs for comparison)
         pwr_law_params : power-law model parameters after fitting
     """
@@ -233,7 +233,7 @@ def lrn_crv_power_law_extrapolate(x, y, # m0:int,
     assert len(x)==len(y), 'Length of vectors x and y must be the same. Got x={len(x)}, y={len(y)}.'
     
     # Data for curve fitting (interpolation)
-    m0 = len(x) - p_et
+    m0 = len(x) - n_pnts_ext
     x_it = x[:m0]
     y_it = y[:m0]
 

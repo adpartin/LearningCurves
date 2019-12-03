@@ -78,8 +78,8 @@ def get_model(model_name, init_kwargs=None):
 
     elif model_name == 'nn_reg_mini':
         model = NN_REG_MINI(**init_kwargs)
-    elif model_name == 'nn_reg_gdsc':
-        model = NN_REG_GDSC(**init_kwargs)        
+    elif model_name == 'nn_reg_ap':
+        model = NN_REG_AP(**init_kwargs)        
         
     elif model_name == 'nn_reg_attn':
         model = NN_REG_ATTN(**init_kwargs)
@@ -384,7 +384,7 @@ class NN_REG_MINI(BaseMLModel):
         self.model = model 
         
         
-class NN_REG_GDSC(BaseMLModel):
+class NN_REG_AP(BaseMLModel):
     """ Neural network regressor.
     Fully-connected NN.
     """

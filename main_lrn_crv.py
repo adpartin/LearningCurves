@@ -68,7 +68,7 @@ def parse_args(args):
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
     parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str,
                         choices=['lgb_reg', 'rf_reg', 'nn_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_attn', 'nn_reg_layer_less', 'nn_reg_layer_more',
-                                 'nn_reg_neuron_less', 'nn_reg_neuron_more', 'nn_reg_res', 'nn_reg_mini', 'nn_reg_gdsc'], help='ML model (default: lgb_reg).')
+                                 'nn_reg_neuron_less', 'nn_reg_neuron_more', 'nn_reg_res', 'nn_reg_mini', 'nn_reg_ap'], help='ML model (default: lgb_reg).')
 
     # LightGBM params
     parser.add_argument('--gbm_leaves', default=31, type=int, help='Maximum tree leaves for base learners (default: 31).')
@@ -403,8 +403,71 @@ def run(args):
     #====================================
 
     # Dump args
-    dump_dict(args, outpath=args['outdir']/'args.txt')        
-        
+    dump_dict(args, outpath=args['outdir']/'args.txt')
+    
+    
+    #====================================
+    figsize = (7, 5.5)
+    metric_name = 'mean_absolute_error'
+    xtick_scale, ytick_scale = 'log2', 'log2'
+    plot_args = {'metric_name': metric_name, 'xtick_scale': xtick_scale, 'ytick_scale': xtick_scale, 'figsize': figsize}
+    
+    scores_te = lrn_crv_scores[(lrn_crv_scores.metric==metric_name) & (lrn_crv_scores.set=='te')].sort_values('tr_size').reset_index(drop=True)
+    
+    # -----  Finally plot power-fit  -----
+    tot_pnts = len(scores_te['tr_size'])
+    n_pnts_fit = 8 # Number of points to use for curve fitting starting from the largest size
+
+    y_col_name = 'fold0'
+    ax = None
+
+    ax = lrn_crv_plot.plot_lrn_crv_new(
+            x=scores_te['tr_size'][0:], y=scores_te[y_col_name][0:],
+            ax=ax, ls='', marker='v', alpha=0.7,
+            **plot_args, label='Raw Data')
+
+    shard_min_idx = 0 if tot_pnts < n_pnts_fit else tot_pnts - n_pnts_fit
+
+    ax, _, gof = lrn_crv_plot.plot_lrn_crv_power_law(
+            x=scores_te['tr_size'][shard_min_idx:], y=scores_te[y_col_name][shard_min_idx:],
+            **plot_args, plot_raw=False, ax=ax, alpha=1 );
+
+    ax.legend(frameon=True, fontsize=10, loc='best')
+    plt.tight_layout()
+    plt.savefig(args['outdir']/f'power_law_fit_{metric_name}.png')
+    
+    
+    # -----  Extrapolation  -----
+    n_pnts_ext = 1 # Number of points to extrapolate to
+    n_pnts_fit = 6 # Number of points to use for curve fitting starting from the largest size
+
+    tot_pnts = len(scores_te['tr_size'])
+    m0 = tot_pnts - n_pnts_ext
+    shard_min_idx = m0 - n_pnts_fit
+    
+    ax = None
+
+    # Plot of all the points
+    ax = lrn_crv_plot.plot_lrn_crv_new(
+            x=scores_te['tr_size'][0:shard_min_idx], y=scores_te[y_col_name][0:shard_min_idx],
+            ax=ax, ls='', marker='v', alpha=0.8, color='k',
+            **plot_args, label='Excluded Points')
+
+    # Plot of all the points
+    ax = lrn_crv_plot.plot_lrn_crv_new(
+            x=scores_te['tr_size'][shard_min_idx:m0], y=scores_te[y_col_name][shard_min_idx:m0],
+            ax=ax, ls='', marker='*', alpha=0.8, color='g',
+            **plot_args, label='Included Points')
+
+    # Extrapolation
+    ax, _, mae_et = lrn_crv_plot.lrn_crv_power_law_extrapolate(
+            x=scores_te['tr_size'][shard_min_idx:], y=scores_te[y_col_name][shard_min_idx:],
+            n_pnts_ext=n_pnts_ext,
+            **plot_args, plot_raw_it=False, label_et='Extrapolation', ax=ax );
+
+    ax.legend(frameon=True, fontsize=10, loc='best')
+    plt.savefig(args['outdir']/f'power_law_ext_{metric_name}.png')
+    
 
     # -----------------------------------------------
     #      Learning curve 
