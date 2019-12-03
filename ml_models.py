@@ -78,6 +78,8 @@ def get_model(model_name, init_kwargs=None):
 
     elif model_name == 'nn_reg_mini':
         model = NN_REG_MINI(**init_kwargs)
+    elif model_name == 'nn_reg_gdsc':
+        model = NN_REG_GDSC(**init_kwargs)        
         
     elif model_name == 'nn_reg_attn':
         model = NN_REG_ATTN(**init_kwargs)
@@ -379,7 +381,33 @@ class NN_REG_MINI(BaseMLModel):
         
         opt = self.get_optimizer()
         model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
-        self.model = model        
+        self.model = model 
+        
+        
+class NN_REG_GDSC(BaseMLModel):
+    """ Neural network regressor.
+    Fully-connected NN.
+    """
+    model_name = 'nn_reg0'
+
+    def __init__(self, input_dim, dr_rate=0.2, opt_name='sgd', lr=0.001, initializer='he_uniform', batchnorm=False):
+        self.input_dim = input_dim
+        self.dr_rate = dr_rate
+        self.opt_name = opt_name
+        self.initializer = initializer
+        self.lr = lr
+
+        # layers = [1000, 1000, 500, 250, 125, 60, 30]
+        layers = [1000, 800, 400, 250, 125, 60, 30]
+        inputs = Input(shape=(self.input_dim,), name='inputs')
+        x = self.build_dense_block(layers, inputs, batchnorm=batchnorm)
+
+        outputs = Dense(1, activation='relu', name='outputs')(x)
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        opt = self.get_optimizer()
+        model.compile(loss='mean_squared_error', optimizer=opt, metrics=['mae']) # r2_krs 
+        self.model = model         
         
 
         

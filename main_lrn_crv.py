@@ -68,7 +68,7 @@ def parse_args(args):
     # parser.add_argument('-frm', '--framework', default='lightgbm', type=str, choices=['keras', 'lightgbm', 'sklearn'], help='ML framework (default: lightgbm).')
     parser.add_argument('-ml', '--model_name', default='lgb_reg', type=str,
                         choices=['lgb_reg', 'rf_reg', 'nn_reg', 'nn_reg0', 'nn_reg1', 'nn_reg_attn', 'nn_reg_layer_less', 'nn_reg_layer_more',
-                                 'nn_reg_neuron_less', 'nn_reg_neuron_more', 'nn_reg_res', 'nn_reg_mini'], help='ML model (default: lgb_reg).')
+                                 'nn_reg_neuron_less', 'nn_reg_neuron_more', 'nn_reg_res', 'nn_reg_mini', 'nn_reg_gdsc'], help='ML model (default: lgb_reg).')
 
     # LightGBM params
     parser.add_argument('--gbm_leaves', default=31, type=int, help='Maximum tree leaves for base learners (default: 31).')
