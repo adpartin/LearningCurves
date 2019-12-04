@@ -323,7 +323,7 @@ def lrn_crv_power_law_extrapolate(x, y, # m0:int,
 # ----------------------------------------------------------------------
 # The 2 funcs below are the 1st version of plot funcs that assume output
 # from sklearn learning_curve func
-def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear', ytick_scale='linear'):
+def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7, 5.5), xtick_scale='linear', ytick_scale='linear'):
     """ Takes the entire table of scores across folds and train set sizes, and generates plots of 
     learning curves for the different metrics.
     This function generates a list of results (rslt) and passes it to plot_lrn_crv(). This representation
@@ -380,7 +380,7 @@ def plot_lrn_crv_all_metrics(df, outdir:Path, figsize=(7,5), xtick_scale='linear
 def plot_lrn_crv(rslt:list, metric_name:str='score',
                  xtick_scale:str='log2', ytick_scale:str='log2',
                  xlim:list=None, ylim:list=None, title:str=None, path:Path=None,
-                 figsize=(7,5), ax=None):
+                 figsize=(7,5), plot_tr:bool=False, ax=None):
     """ 
     Plot learning curves for training and test sets.
     Args:
@@ -404,7 +404,8 @@ def plot_lrn_crv(rslt:list, metric_name:str='score',
     if ax is None: fig, ax = plt.subplots(figsize=figsize)
         
     if tr_scores is not None:
-        plot_single_crv(tr_shards, scores=tr_scores, ax=ax, color='b', phase='Train')
+        if plot_tr:
+            plot_single_crv(tr_shards, scores=tr_scores, ax=ax, color='b', phase='Train')
     if te_scores is not None:
         plot_single_crv(tr_shards, scores=te_scores, ax=ax, color='g', phase='Test')
 

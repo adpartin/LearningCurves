@@ -61,7 +61,7 @@ class LearningCurve():
             cv=5,
             cv_lists=None,  # (tr_id, vl_id, te_id)
             cv_folds_arr=None,
-            shard_step_scale: str='log2',
+            lc_step_scale: str='log2',
             min_shard = 0,
             max_shard = None,
             n_shards: int=None,
@@ -78,18 +78,18 @@ class LearningCurve():
             cv_lists : tuple of 3 dicts, cv_lists[0] and cv_lists[1], cv_lists[2], that contain the tr, vl, and te folds, respectively
             cv_folds_arr : list that contains the specific folds in the cross-val run
 
-            shard_step_scale : specifies how to generate the shard values. 
+            lc_step_scale : specifies how to generate the shard values. 
                 Available values: 'linear', 'log2', 'log10'.
 
-            min_shard : min shard value in the case when shard_step_scale is 'log2' or 'log10'
-            max_shard : max shard value in the case when shard_step_scale is 'log2' or 'log10'
+            min_shard : min shard value in the case when lc_step_scale is 'log2' or 'log10'
+            max_shard : max shard value in the case when lc_step_scale is 'log2' or 'log10'
 
-            n_shards : number of shards in the learning curve (used only in the shard_step_scale is 'linear')
+            n_shards : number of shards in the learning curve (used only in the lc_step_scale is 'linear')
             shards_arr : list of ints specifying the shards to process (e.g., [128, 256, 512])
             
             shard_frac : list of relative numbers of training samples that are used to generate learning curves
                 e.g., shard_frac=[0.1, 0.2, 0.4, 0.7, 1.0].
-                If this arg is not provided, then the training shards are generated from n_shards and shard_step_scale.
+                If this arg is not provided, then the training shards are generated from n_shards and lc_step_scale.
                 
             args : command line args
         """
@@ -104,7 +104,7 @@ class LearningCurve():
         self.cv_lists = cv_lists
         self.cv_folds_arr = cv_folds_arr
 
-        self.shard_step_scale = shard_step_scale 
+        self.lc_step_scale = lc_step_scale 
         self.min_shard = min_shard
         self.max_shard = max_shard
         self.n_shards = n_shards
@@ -198,7 +198,7 @@ class LearningCurve():
 
             # Full vector of shards
             # (we create a vector with very large values so that we later truncate it with max_shard)
-            scale = self.shard_step_scale.lower()
+            scale = self.lc_step_scale.lower()
             if scale == 'linear':
                 m = np.linspace(self.min_shard, self.max_shard, self.n_shards+1)[1:]
             else:

@@ -35,8 +35,8 @@ filepath = Path(__file__).resolve().parent
 
 def parse_args(args):
     parser = argparse.ArgumentParser(description='Generate summary table from serial HPO run of learning curves.')
-    parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to the main HPO dir (not Theta/Summit) (default: None).')
-    parser.add_argument('-prf', '--prefix_dir', default=None, type=str, help='Prefix of the individual runs (default: None).')
+    parser.add_argument('-dp', '--dirpath', default=None, required=True, type=str, help='Full path to the main HPO dir (not Theta/Summit) (default: None).')
+    parser.add_argument('-prf', '--prefix_dir', default='run_', type=str, help='Prefix of the individual runs (default: None).')
     args = parser.parse_args(args)
     return args
 
@@ -78,6 +78,9 @@ def parse_args_file(path_args):
 def parse_and_agg_scores(run_path, hp=[], missing_runs=[], scores_fname='scores.csv'):    
     """ ... """
     # Choose the smallest fold out of available folds
+    if len(sorted(run_path.glob('**/cv0_sz*')))==0:
+        return hp, missing_runs
+    
     fold = np.unique( sorted([str(r).split('/cv')[-1].split('_')[0] for r in sorted(run_path.glob('**/cv0_sz*'))]) )[0]
     sz_dirs = sorted( run_path.glob(f'**/cv{fold}_sz*') )
     

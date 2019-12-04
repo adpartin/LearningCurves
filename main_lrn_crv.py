@@ -102,12 +102,13 @@ def parse_args(args):
             help='Metric for HPO evaluation. Required for UPF workflow on Theta HPC (default: mean_absolute_error).')
 
     # Learning curve
-    parser.add_argument('--shard_step_scale', default='log2', type=str, choices=['log2', 'log', 'log10', 'linear'],
-            help='Scale of progressive sampling of shards (log2, log, log10, linear) (default: log2).')
+    parser.add_argument('--lc_step_scale', default='log2', type=str, choices=['log2', 'log', 'log10', 'linear'],
+            help='Scale of progressive sampling of shards in a learning curve (log2, log, log10, linear) (default: log2).')
     parser.add_argument('--min_shard', default=128, type=int, help='The lower bound for the shard sizes (default: 128).')
     parser.add_argument('--max_shard', default=None, type=int, help='The upper bound for the shard sizes (default: None).')
-    parser.add_argument('--n_shards', default=None, type=int, help='Number of shards (used only when shard_step_scale is `linear` (default: None).')
+    parser.add_argument('--n_shards', default=None, type=int, help='Number of shards (used only when lc_step_scale is `linear` (default: None).')
     parser.add_argument('--shards_arr', nargs='+', type=int, default=None, help='List of the actual shards in the learning curve plot (default: None).')
+    parser.add_argument('--plot_fit', action='store_true', help='Whether to generate the fit (default: False).')
     
     # HPs file
     parser.add_argument('--hp_file', default=None, type=str, help='File containing hyperparameters for training (default: None).')
@@ -314,7 +315,7 @@ def run(args):
     #====================================
     
     lrn_crv_init_kwargs = { 'cv': None, 'cv_lists': (tr_id, vl_id, te_id), 'cv_folds_arr': args['cv_folds_arr'],
-                            'shard_step_scale': args['shard_step_scale'], 'n_shards': args['n_shards'],
+                            'lc_step_scale': args['lc_step_scale'], 'n_shards': args['n_shards'],
                             'min_shard': args['min_shard'], 'max_shard': args['max_shard'], 'outdir': args['outdir'],
                             'shards_arr': args['shards_arr'], 'args': args, 'logger': lg.logger } 
                     
@@ -407,66 +408,67 @@ def run(args):
     
     
     #====================================
-    figsize = (7, 5.5)
-    metric_name = 'mean_absolute_error'
-    xtick_scale, ytick_scale = 'log2', 'log2'
-    plot_args = {'metric_name': metric_name, 'xtick_scale': xtick_scale, 'ytick_scale': xtick_scale, 'figsize': figsize}
-    
-    scores_te = lrn_crv_scores[(lrn_crv_scores.metric==metric_name) & (lrn_crv_scores.set=='te')].sort_values('tr_size').reset_index(drop=True)
-    
-    # -----  Finally plot power-fit  -----
-    tot_pnts = len(scores_te['tr_size'])
-    n_pnts_fit = 8 # Number of points to use for curve fitting starting from the largest size
+    if args['plot_fit']:
+        figsize = (7, 5.5)
+        metric_name = 'mean_absolute_error'
+        xtick_scale, ytick_scale = 'log2', 'log2'
+        plot_args = {'metric_name': metric_name, 'xtick_scale': xtick_scale, 'ytick_scale': xtick_scale, 'figsize': figsize}
 
-    y_col_name = 'fold0'
-    ax = None
+        scores_te = lrn_crv_scores[(lrn_crv_scores.metric==metric_name) & (lrn_crv_scores.set=='te')].sort_values('tr_size').reset_index(drop=True)
 
-    ax = lrn_crv_plot.plot_lrn_crv_new(
-            x=scores_te['tr_size'][0:], y=scores_te[y_col_name][0:],
-            ax=ax, ls='', marker='v', alpha=0.7,
-            **plot_args, label='Raw Data')
+        # -----  Finally plot power-fit  -----
+        tot_pnts = len(scores_te['tr_size'])
+        n_pnts_fit = 8 # Number of points to use for curve fitting starting from the largest size
 
-    shard_min_idx = 0 if tot_pnts < n_pnts_fit else tot_pnts - n_pnts_fit
+        y_col_name = 'fold0'
+        ax = None
 
-    ax, _, gof = lrn_crv_plot.plot_lrn_crv_power_law(
-            x=scores_te['tr_size'][shard_min_idx:], y=scores_te[y_col_name][shard_min_idx:],
-            **plot_args, plot_raw=False, ax=ax, alpha=1 );
+        ax = lrn_crv_plot.plot_lrn_crv_new(
+                x=scores_te['tr_size'][0:], y=scores_te[y_col_name][0:],
+                ax=ax, ls='', marker='v', alpha=0.7,
+                **plot_args, label='Raw Data')
 
-    ax.legend(frameon=True, fontsize=10, loc='best')
-    plt.tight_layout()
-    plt.savefig(args['outdir']/f'power_law_fit_{metric_name}.png')
-    
-    
-    # -----  Extrapolation  -----
-    n_pnts_ext = 1 # Number of points to extrapolate to
-    n_pnts_fit = 6 # Number of points to use for curve fitting starting from the largest size
+        shard_min_idx = 0 if tot_pnts < n_pnts_fit else tot_pnts - n_pnts_fit
 
-    tot_pnts = len(scores_te['tr_size'])
-    m0 = tot_pnts - n_pnts_ext
-    shard_min_idx = m0 - n_pnts_fit
-    
-    ax = None
+        ax, _, gof = lrn_crv_plot.plot_lrn_crv_power_law(
+                x=scores_te['tr_size'][shard_min_idx:], y=scores_te[y_col_name][shard_min_idx:],
+                **plot_args, plot_raw=False, ax=ax, alpha=1 );
 
-    # Plot of all the points
-    ax = lrn_crv_plot.plot_lrn_crv_new(
-            x=scores_te['tr_size'][0:shard_min_idx], y=scores_te[y_col_name][0:shard_min_idx],
-            ax=ax, ls='', marker='v', alpha=0.8, color='k',
-            **plot_args, label='Excluded Points')
+        ax.legend(frameon=True, fontsize=10, loc='best')
+        plt.tight_layout()
+        plt.savefig(args['outdir']/f'power_law_fit_{metric_name}.png')
 
-    # Plot of all the points
-    ax = lrn_crv_plot.plot_lrn_crv_new(
-            x=scores_te['tr_size'][shard_min_idx:m0], y=scores_te[y_col_name][shard_min_idx:m0],
-            ax=ax, ls='', marker='*', alpha=0.8, color='g',
-            **plot_args, label='Included Points')
 
-    # Extrapolation
-    ax, _, mae_et = lrn_crv_plot.lrn_crv_power_law_extrapolate(
-            x=scores_te['tr_size'][shard_min_idx:], y=scores_te[y_col_name][shard_min_idx:],
-            n_pnts_ext=n_pnts_ext,
-            **plot_args, plot_raw_it=False, label_et='Extrapolation', ax=ax );
+        # -----  Extrapolation  -----
+        n_pnts_ext = 1 # Number of points to extrapolate to
+        n_pnts_fit = 6 # Number of points to use for curve fitting starting from the largest size
 
-    ax.legend(frameon=True, fontsize=10, loc='best')
-    plt.savefig(args['outdir']/f'power_law_ext_{metric_name}.png')
+        tot_pnts = len(scores_te['tr_size'])
+        m0 = tot_pnts - n_pnts_ext
+        shard_min_idx = m0 - n_pnts_fit
+
+        ax = None
+
+        # Plot of all the points
+        ax = lrn_crv_plot.plot_lrn_crv_new(
+                x=scores_te['tr_size'][0:shard_min_idx], y=scores_te[y_col_name][0:shard_min_idx],
+                ax=ax, ls='', marker='v', alpha=0.8, color='k',
+                **plot_args, label='Excluded Points')
+
+        # Plot of all the points
+        ax = lrn_crv_plot.plot_lrn_crv_new(
+                x=scores_te['tr_size'][shard_min_idx:m0], y=scores_te[y_col_name][shard_min_idx:m0],
+                ax=ax, ls='', marker='*', alpha=0.8, color='g',
+                **plot_args, label='Included Points')
+
+        # Extrapolation
+        ax, _, mae_et = lrn_crv_plot.lrn_crv_power_law_extrapolate(
+                x=scores_te['tr_size'][shard_min_idx:], y=scores_te[y_col_name][shard_min_idx:],
+                n_pnts_ext=n_pnts_ext,
+                **plot_args, plot_raw_it=False, label_et='Extrapolation', ax=ax );
+
+        ax.legend(frameon=True, fontsize=10, loc='best')
+        plt.savefig(args['outdir']/f'power_law_ext_{metric_name}.png')
     
 
     # -----------------------------------------------
