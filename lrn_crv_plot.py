@@ -156,6 +156,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_
     yfit = power_law_func_3prm(x, **fit_prms)
     
     # Compute goodness-of-fit
+    gof = {}
     # R2 is not valid for non-linear models
     # https://statisticsbyjim.com/regression/standard-error-regression-vs-r-squared/
     # http://tuvalu.santafe.edu/~aaronc/powerlaws/
@@ -164,7 +165,8 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_
     # https://www.mathworks.com/help/curvefit/evaluating-goodness-of-fit.html --> based on this we should use SSE or RMSE
     rmse = sqrt( metrics.mean_squared_error(y, yfit) )
     mae = metrics.mean_absolute_error(y, yfit)
-    gof = {'rmse': rmse, 'mae': mae}
+    gof['rmse'] = rmse
+    gof['mae'] = mae
 
     # Plot fit
     # eq = r"e(m)={:.2f}$m^{:.2f}$ + {:.2f}".format(power_law_params['alpha'], power_law_params['beta'], power_law_params['gamma'])
@@ -233,7 +235,7 @@ def lrn_crv_power_law_extrapolate(x, y, # m0:int,
     assert len(x)==len(y), 'Length of vectors x and y must be the same. Got x={len(x)}, y={len(y)}.'
     
     # Data for curve fitting (interpolation)
-    m0 = len(x) - n_pnts_ext
+    m0 = len(x) - n_pnts_ext # The adjusted number of available LC points
     x_it = x[:m0]
     y_it = y[:m0]
 
@@ -252,10 +254,11 @@ def lrn_crv_power_law_extrapolate(x, y, # m0:int,
     y_fit = power_law_func_3prm(x, **fit_prms)
     
     # Compute goodness-of-fit
+    gof = {}
     # rmse_it = sqrt( metrics.mean_squared_error(y_it, y_it_fit) )
     # rmse_et = sqrt( metrics.mean_squared_error(y_et, y_et_fit) )
-    mae_it = metrics.mean_absolute_error( y_it, y_it_fit )
-    mae_et = metrics.mean_absolute_error( y_et, y_et_fit )
+    gof['mae_it'] = metrics.mean_absolute_error( y_it, y_it_fit )
+    gof['mae_et'] = metrics.mean_absolute_error( y_et, y_et_fit )
     
     # Init figure
     fontsize = 13
@@ -313,7 +316,7 @@ def lrn_crv_power_law_extrapolate(x, y, # m0:int,
     
     ax.legend(frameon=True, fontsize=fontsize, bbox_to_anchor=(1.04, 1), loc='upper left')
     ax.grid(True)
-    return ax, fit_prms, mae_et
+    return ax, fit_prms, gof
 
 
 

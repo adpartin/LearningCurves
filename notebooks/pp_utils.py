@@ -25,7 +25,7 @@ import lrn_crv_plot
 def get_xy(scores=None, path:str=None, metric_name:str='mean_absolute_error', tr_set:str='te', shard_min_idx:int=0, cv_folds:int=1):
     """ Extract x and y (tr size and score) for the plot.
     Args:
-        df : df that contains all the scores
+        scores : df that contains all the scores (data from lrn_crv_scores.csv)
         path : as an alternative to the actual df, allow to pass a full path to lrn_crv_scores.csv
         tr_set : 'tr', 'vl', 'te'
     Returns:

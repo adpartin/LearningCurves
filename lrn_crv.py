@@ -200,7 +200,7 @@ class LearningCurve():
             # (we create a vector with very large values so that we later truncate it with max_shard)
             scale = self.shard_step_scale.lower()
             if scale == 'linear':
-                m = np.linspace(0, self.max_shard, self.n_shards+1)[1:]
+                m = np.linspace(self.min_shard, self.max_shard, self.n_shards+1)[1:]
             else:
                 # we create very large vector m, so that we later truncate it with max_shard
                 if scale == 'log2':
