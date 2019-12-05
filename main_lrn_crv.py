@@ -102,7 +102,7 @@ def parse_args(args):
             help='Metric for HPO evaluation. Required for UPF workflow on Theta HPC (default: mean_absolute_error).')
 
     # Learning curve
-    parser.add_argument('--lc_step_scale', default='log2', type=str, choices=['log2', 'log', 'log10', 'linear'],
+    parser.add_argument('--lc_step_scale', default='log2', type=str, choices=['log2', 'log', 'log10', 'linear', 'log2_fine'],
             help='Scale of progressive sampling of shards in a learning curve (log2, log, log10, linear) (default: log2).')
     parser.add_argument('--min_shard', default=128, type=int, help='The lower bound for the shard sizes (default: 128).')
     parser.add_argument('--max_shard', default=None, type=int, help='The upper bound for the shard sizes (default: None).')

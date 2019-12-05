@@ -209,6 +209,16 @@ class LearningCurve():
                     m = np.exp( np.array(np.arange(8))[1:] )
                 elif scale == 'log10':
                     m = 10 ** np.array(np.arange(8))[1:]
+                elif scale == 'log2_fine':
+                    if self.n_shards is not None:
+                        # TODO: need to update code to follow this methodology. This can
+                        # allow to remove almost all the code at the bottom 
+                        m = 2 ** np.linspace(self.min_shard, self.max_shard, self.n_shards)
+                        m = np.array( [int(i) for i in m] )
+                        self.tr_shards = m
+                        if self.logger is not None: self.logger.info('\nTrain shards: {}\n'.format(self.tr_shards))
+                        return None
+                        
 
             m = np.array( [int(i) for i in m] ) # cast to int
 

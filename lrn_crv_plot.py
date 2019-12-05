@@ -58,8 +58,8 @@ def fit_power_law_3prm(x, y, p0:list=[30, -0.5, 0.06]):
         prms_dct['alpha'], prms_dct['beta'], prms_dct['gamma'] = prms[0], prms[1], prms[2]
         return prms_dct
     except:
-        # print('Could not fit power-law.')
-        warnings.warn('Could not fit power-law.')
+        print('Could not fit power-law.')
+        # warnings.warn('Could not fit power-law.') # This doesn't work
         return None
         
     # prms, prms_cov = optimize.curve_fit(power_law_func_3prm, x, y, p0=p0)
@@ -90,9 +90,9 @@ def plot_lrn_crv_new(x, y, yerr=None, metric_name:str='score',
     # Plot raw data
     # p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
     if yerr is None:
-        p = ax.plot(x, y, marker=marker, ls=ls, color=color, alpha=alpha, label=label);
+        p = ax.plot(x, y, marker=marker, ls=ls, markerfacecolor=color, markeredgecolor=color, alpha=alpha, label=label);
     else:
-        p = ax.errorbar(x, y, yerr, marker=marker, ls=ls, color=color, alpha=alpha, label=label);
+        p = ax.errorbar(x, y, yerr, marker=marker, ls=ls, markerfacecolor=color, markeredgecolor=color, alpha=alpha, label=label);
     c = p[0].get_color()
 
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
@@ -121,7 +121,7 @@ def plot_lrn_crv_new(x, y, yerr=None, metric_name:str='score',
 def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_name:str='Score',
                            xtick_scale:str='log2', ytick_scale:str='log2',
                            xlim:list=None, ylim:list=None, title:str=None, figsize=(7,5),
-                           marker='.', color=None, alpha=0.7, label:str='Data', ax=None):
+                           marker='.', color=None, alpha=0.7, label_fit:str='Fit', label:str='Data', ax=None):
     
     """ This function takes train set size in x and score in y, and generates a learning curve plot.
     The power-law model is fitted to the learning curve data.
@@ -139,7 +139,7 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_
     legend_fontsize = 10
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
-    
+
     # Plot raw data
     if plot_raw:
         p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
@@ -170,9 +170,11 @@ def plot_lrn_crv_power_law(x, y, plot_fit:bool=True, plot_raw:bool=True, metric_
 
     # Plot fit
     # eq = r"e(m)={:.2f}$m^{:.2f}$ + {:.2f}".format(power_law_params['alpha'], power_law_params['beta'], power_law_params['gamma'])
-    label_fit = '{} Fit; RMSE={:.4f}; a={:.2f}; b={:.2f}'.format(label, rmse, fit_prms['alpha'], fit_prms['beta'])
     # if plot_fit: ax.plot(x, yfit, '--', color=c, label=f'{label} fit; RMSE={rmse:.4f}; ' + eq);
-    if plot_fit: ax.plot(x, yfit, '--', color=c, label=label_fit);
+    # label_fit = '{} Fit; RMSE={:.4f}; a={:.2f}; b={:.2f}'.format(label, rmse, fit_prms['alpha'], fit_prms['beta'])
+    if plot_fit:
+        ax.plot(x, yfit, '--', color=c, label=label_fit);
+         
         
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)
     basey, ylabel_scale = scale_ticks_params(tick_scale=ytick_scale)

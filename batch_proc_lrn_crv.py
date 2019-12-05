@@ -24,8 +24,14 @@ def main(args):
     # glob all files data_splits_seed
     # dirs = Path(dirpath).glob('data_splits_seed*')
     dirs = glob(os.path.join(dirpath, 'data_splits_*'))
+    digits = len(str(len(dirs)))
+    
+    tot_to_process = 8
     for i, dpath in enumerate(dirs):
-        main_lrn_crv.main([ '--dirpath', str(dpath), '--seed', str(i), *args[1:] ])
+        if i+1 > tot_to_process:
+            break
+        r_name = 'run_' + f'{i}'.zfill(digits)
+        main_lrn_crv.main([ '--dirpath', str(dpath), '--seed', str(i), '--run_outdir', r_name, *args[1:] ])
 
     runtime = time() - t0
     print('Runtime: {} hrs.'.format(runtime/3600))
