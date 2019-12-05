@@ -26,7 +26,7 @@ def main(args):
     dirs = glob(os.path.join(dirpath, 'data_splits_*'))
     digits = len(str(len(dirs)))
     
-    tot_to_process = 8
+    tot_to_process = 10
     for i, dpath in enumerate(dirs):
         if i+1 > tot_to_process:
             break
