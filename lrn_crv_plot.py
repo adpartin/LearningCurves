@@ -19,6 +19,30 @@ from scipy import optimize
 # Utils
 from cv_splitter import cv_splitter, plot_ytr_yvl_dist
 
+
+# ---------------------------------------------------------
+# # This is for weighted curve fitting
+# import rpy2.robjects as robjects
+
+# def power_law_func_3prm(x, alpha, beta, gamma):
+#     """ 3 parameters. docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.power.html """
+#     return alpha * np.power(x, beta) + gamma
+
+# def biased_powerlaw(x, a, b, c):
+#     return a + b*(x**(c))
+
+# def biased_powerlaw(x, a, b, c):
+#     return a + b*(x**(c))
+#     return A * x **(B) + C
+
+# def params(x: robjects.IntVector, y: robjects.FloatVector) -> tuple:
+#     script = '\'fit.R\''
+#     robjects.r('''source({})'''.format(script))
+#     get_params = robjects.globalenv['model_param']
+#     a, b, c = get_params(x, y)
+#     return (a, b, c-0.5)
+# ---------------------------------------------------------
+
         
 def capitalize_metric(met):
     return ' '.join(s.capitalize() for s in met.split('_'))      
@@ -90,9 +114,9 @@ def plot_lrn_crv_new(x, y, yerr=None, metric_name:str='score',
     # Plot raw data
     # p = ax.plot(x, y, marker=marker, ls='',  markerfacecolor=color, markeredgecolor='k', alpha=alpha, label=label);
     if yerr is None:
-        p = ax.plot(x, y, marker=marker, ls=ls, markerfacecolor=color, markeredgecolor=color, alpha=alpha, label=label);
+        p = ax.plot(x, y, marker=marker, ls=ls, markerfacecolor=color, markeredgecolor=color, color=color, alpha=alpha, label=label);
     else:
-        p = ax.errorbar(x, y, yerr, marker=marker, ls=ls, markerfacecolor=color, markeredgecolor=color, alpha=alpha, label=label);
+        p = ax.errorbar(x, y, yerr, marker=marker, ls=ls, markerfacecolor=color, markeredgecolor=color, ecolor=color, alpha=alpha, label=label);
     c = p[0].get_color()
 
     basex, xlabel_scale = scale_ticks_params(tick_scale=xtick_scale)

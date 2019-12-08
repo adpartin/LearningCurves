@@ -74,7 +74,7 @@ def plot_lc_multi_runs(runs:list, labels:list=None, metric_name:str='mean_absolu
         
         plot_kwargs = {'x': x, 'y': y, 'metric_name': metric_name, 'figsize': figsize,
                        'xtick_scale': xtick_scale, 'ytick_scale': ytick_scale,
-                       'ls': '--', 'marker': '.', 'alpha': 0.7,
+                       'ls': '', 'marker': '.', 'alpha': 0.5, 'color': 'b',
                        #'title': 'Learning Curves'
                       }        
         # print(i)
@@ -156,3 +156,59 @@ def plot_all_from_hp_df(hp, metric_name='mean_absolute_error', marker='.', color
     ax.grid(True)        
     return ax
 
+
+def parse_and_agg_scores_for_run(run_path, hp=[], missing_runs=[], scores_fname='scores.csv'):    
+    """ This func takes a dir of a single run of learning curves, extracts and aggregates
+    scores for each training set size into a single structure. """
+    # Choose the smallest fold out of available folds
+    if len(sorted(run_path.glob('**/cv0*sz*')))==0:
+        return hp, missing_runs
+    
+    fold = np.unique( sorted([str(r).split('/cv')[-1].split('_')[0] for r in sorted(run_path.glob('**/cv0_sz*'))]) )[0]
+    sz_dirs = sorted( run_path.glob(f'**/cv{fold}*sz*') )
+    
+    lrn_crv_scores = []
+    
+    for sz_dir in sz_dirs:
+        path_scores = sz_dir / scores_fname
+        print(path_scores)
+        
+        if path_scores.exists(): # check if scores exist (some trainings may not have completed)
+            scr = pd.read_csv( path_scores )
+            tr_size = int( str(sz_dir).split('sz')[-1] )
+            # aa = scr.loc[ scr['set']=='te', ['metric', 'fold1'] ].reset_index(drop=True) # Note! Gets only the first fold!
+            fold_col_name = sorted( [c for c in scr.columns if 'fold' in c] )[0]
+            aa = scr.loc[ scr['set']=='te', ['metric', fold_col_name] ].reset_index(drop=True) # Note! Gets only the first fold!
+            aa = {aa.loc[i, 'metric']: aa.loc[i, fold_col_name] for i in range(aa.shape[0])}
+            aa['tr_size'] = tr_size
+            
+            # Agg scores from each sz to master table
+            lrn_crv_scores.append(scr)
+
+            # Read and parse args
+            # path_args = sz_dir / 'model_args.txt'
+            path_args = sz_dir / 'args.txt'
+            if path_args.exists():
+                args = parse_args_file(path_args)
+                aa.update(args) # combine scores with args
+            else:
+                # If (some reason) the args file was not found, results are useless.
+                # Don't record the results but just continue.
+                continue
+
+            # If keras model, get the early stop epoch
+            if (sz_dir/'krs_history.csv').exists():
+                h = pd.read_csv( sz_dir/'krs_history.csv' )
+                aa['epoch_stop'] = h['epoch'].max()        
+
+            # Append results to the global list
+            hp.append(aa)
+        else:
+            missing_runs.append(str(sz_dir))
+            print(f'{scores_fname} does not exist.')
+            print('continue')
+            
+    lrn_crv_scores = pd.concat(lrn_crv_scores, axis=0)
+    lrn_crv_scores = lrn_crv_scores.sort_values(['set', 'metric', 'tr_size']).reset_index(drop=True)
+            
+    return hp, missing_runs, lrn_crv_scores

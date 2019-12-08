@@ -213,6 +213,7 @@ class LearningCurve():
                     if self.n_shards is not None:
                         # TODO: need to update code to follow this methodology. This can
                         # allow to remove almost all the code at the bottom 
+                        # self.min_shard = 0 if self.min_shard is None else self.min_shard
                         m = 2 ** np.linspace(self.min_shard, self.max_shard, self.n_shards)
                         m = np.array( [int(i) for i in m] )
                         self.tr_shards = m
