@@ -76,7 +76,8 @@ def parse_args_file(path_args):
 
 # def parse_and_agg_scores(run_path, args, scores_fname='scores.csv', hp=[]):
 def parse_and_agg_scores(run_path, hp=[], missing_runs=[], scores_fname='scores.csv'):    
-    """ ... """
+    """ This func takes a dir of a single run of learning curves, extracts and aggregates
+    scores for each training set size into a single structure. """
     # Choose the smallest fold out of available folds
     if len(sorted(run_path.glob('**/cv0_sz*')))==0:
         return hp, missing_runs
