@@ -52,8 +52,9 @@ class LearningCurve():
     Train estimator using multiple shards (train set sizes) and generate learning curves for multiple performance metrics.
     Example:
         lc = LearningCurve(xdata, ydata, cv_lists=(tr_ids, vl_ids))
-        lrn_crv_scores = lc.trn_learning_curve( framework=framework, mltype=mltype, model_name=model_name,
-                                                init_kwargs=init_kwargs, fit_kwargs=fit_kwargs, clr_keras_kwargs=clr_keras_kwargs)
+        lrn_crv_scores = lc.trn_learning_curve(
+            framework=framework, mltype=mltype, model_name=model_name,
+            init_kwargs=init_kwargs, fit_kwargs=fit_kwargs, clr_keras_kwargs=clr_keras_kwargs)
     """
     def __init__(self,
             X, Y,
@@ -68,7 +69,8 @@ class LearningCurve():
             shards_arr: list=[],
             args=None,
             logger=None,
-            outdir='./'):
+            save_model=False,
+            outdir=Path('./')):
         """
         Args:
             X : array-like (pd.DataFrame or np.ndarray)
@@ -92,6 +94,7 @@ class LearningCurve():
                 If this arg is not provided, then the training shards are generated from n_shards and lc_step_scale.
                 
             args : command line args
+            save_model : dump model if True (keras model ignores this arg since we load the best model to calc score)
         """
         X = X.copy()
         Y = Y.copy()
@@ -111,8 +114,9 @@ class LearningCurve():
         self.shards_arr = shards_arr
 
         self.args = args
-        self.logger = logger
-        self.outdir = Path(outdir)
+        self.print_fnc = get_print_fnc(logger)
+        self.save_model = save_model
+        self.outdir = outdir
 
         self.create_fold_dcts()
         self.create_tr_shards_list()
@@ -205,19 +209,22 @@ class LearningCurve():
                 # we create very large vector m, so that we later truncate it with max_shard
                 if scale == 'log2':
                     m = 2 ** np.array(np.arange(30))[1:]
-                elif scale == 'log':
-                    m = np.exp( np.array(np.arange(8))[1:] )
+                # elif scale == 'log':
+                    # m = np.exp( np.array(np.arange(8))[1:] )
                 elif scale == 'log10':
                     m = 10 ** np.array(np.arange(8))[1:]
-                elif scale == 'log2_fine':
+                elif scale == 'log':
                     if self.n_shards is not None:
                         # TODO: need to update code to follow this methodology. This can
                         # allow to remove almost all the code at the bottom 
                         # self.min_shard = 0 if self.min_shard is None else self.min_shard
-                        m = 2 ** np.linspace(self.min_shard, self.max_shard, self.n_shards)
+                        # www.researchgate.net/post/is_the_logarithmic_spaced_vector_the_same_in_any_base
+                        pw = np.linspace(0, self.n_shards-1, num=self.n_shards) / (self.n_shards-1)
+                        m = self.min_shard * (self.max_shard/self.min_shard) ** pw
+                        # m = 2 ** np.linspace(self.min_shard, self.max_shard, self.n_shards)
                         m = np.array( [int(i) for i in m] )
                         self.tr_shards = m
-                        if self.logger is not None: self.logger.info('\nTrain shards: {}\n'.format(self.tr_shards))
+                        self.print_fnc('\nTrain shards: {}\n'.format(self.tr_shards))
                         return None
                         
 
@@ -246,7 +253,7 @@ class LearningCurve():
             self.tr_shards = m
         # --------------------------------------------
         
-        if self.logger is not None: self.logger.info('\nTrain shards: {}\n'.format(self.tr_shards))
+        self.print_fnc('\nTrain shards: {}\n'.format(self.tr_shards))
 
 
     def trn_learning_curve(self,
@@ -291,8 +298,7 @@ class LearningCurve():
         # for fold, fold_num in enumerate(self.tr_dct.keys()):
         for fold_num in self.tr_dct.keys():
             # fold = fold + 1
-            # if self.logger is not None: self.logger.info(f'Fold {fold}/{self.cv_folds}')
-            if self.logger is not None: self.logger.info(f'Fold {fold_num} out of {list(self.tr_dct.keys())}')    
+            self.print_fnc(f'Fold {fold_num} out of {list(self.tr_dct.keys())}')    
 
             # Get the indices for this fold
             tr_id = self.tr_dct[fold_num]
@@ -313,7 +319,7 @@ class LearningCurve():
             idx = np.arange(len(xtr))
             for i, tr_sz in enumerate(self.tr_shards):
                 # For each shard: train model, save best model, calc tr_scores, calc_vl_scores
-                if self.logger: self.logger.info(f'\tTrain size: {tr_sz} ({i+1}/{len(self.tr_shards)})')   
+                self.print_fnc(f'\tTrain size: {tr_sz} ({i+1}/{len(self.tr_shards)})')   
 
                 # Sequentially get a subset of samples (the input dataset X must be shuffled)
                 # xtr_sub = xtr[idx[:tr_sz], :]
@@ -503,7 +509,8 @@ class LearningCurve():
         # Remove key (we'll dump this dict so we don't need to print all the eval set)
         fit_kwargs.pop('eval_set', None)
 
-        joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
+        if self.save_model:
+            joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
         return model, trn_outdir, runtime
     
     
@@ -519,7 +526,8 @@ class LearningCurve():
         t0 = time()
         model.fit(xtr_sub, ytr_sub, **fit_kwargs)
         runtime = (time() - t0)/60
-        joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
+        if self.save_model:
+            joblib.dump(model, filename = trn_outdir / ('model.'+self.model_name+'.pkl') )
         return model, trn_outdir, runtime
     
     
@@ -558,6 +566,11 @@ def dump_preds(y_true, y_pred, meta=None, outpath='./preds.csv'):
     preds.to_csv(Path(outpath), index=False)
 
 
+def get_print_fnc(logger):
+    """ Returns the python 'print' function if logger is None. Othersiwe, returns logger.info. """
+    return print if logger is None else logger.info
+    
+    
 # --------------------------------------------------------------------------------
 # def capitalize_metric(met):
 #     return ' '.join(s.capitalize() for s in met.split('_'))        

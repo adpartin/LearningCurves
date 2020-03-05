@@ -1,7 +1,7 @@
 """
 This script contains functions that help with meta-analysis of the different runs.
 Need to pass the main hpo dir as input arg (e.g., /vol/ml/apartin/projects/LearningCurves/trn.gdsc/hpo_lgbm/trn.gdsc/split_on_none).
-Note! The diff beteen this script and post_proc_from_hpc.py is the probably the func get_df_from_upf_runs
+Note! The diff btw this script and post_proc_from_hpc.py is the probably the func get_df_from_upf_runs
 
 It dumps:
 hpo_summary.csv: summary of all runs

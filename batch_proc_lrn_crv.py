@@ -1,7 +1,7 @@
 """
 A batch prcoessing code that calls main_lrn_crv.py with the same set of parameters
 but different data_splits_seed#.
-The use need to specify the dir to where the data_splits_seed* dirs are located.
+The user needs to specify the path where the data_splits_seed* dirs are located.
 """
 import warnings
 warnings.filterwarnings('ignore')
@@ -31,6 +31,7 @@ def main(args):
         tot_to_process = len(dirs)
         print(tot_to_process)
     
+    import pdb; pdb.set_trace()
     for i, dpath in enumerate(dirs):
         if i+1 > tot_to_process:
             break
@@ -39,6 +40,8 @@ def main(args):
 
     runtime = time() - t0
     print('Runtime: {} hrs.'.format(runtime/3600))
+
+    import pdb; pdb.set_trace()
     print('Done.')
 
 main(sys.argv[1:])

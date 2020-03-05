@@ -197,6 +197,9 @@ def build_dataframe(args):
     # TODO: check this (may require a more rigorous analysis)
     lg.logger.info('\nDrop samples with bad fit (R2fit) ...')
     lg.logger.info(f'df_response.shape {df_response.shape}')
+    # prc_bad_fit = 5
+    # cut = int(df_response.shape[0] * (100 - prc_bad_fit)/100)
+    # df_response = df_response.sort_values('R2fit', ascending=False).reset_index(drop=True)[:cut]
     id_drop = df_response['R2fit'] <= 0
     df_response = df_response.loc[~id_drop,:]
     lg.logger.info(f'Dropped {sum(id_drop)} rsp data points.')

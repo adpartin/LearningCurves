@@ -102,12 +102,13 @@ def parse_args(args):
             help='Metric for HPO evaluation. Required for UPF workflow on Theta HPC (default: mean_absolute_error).')
 
     # Learning curve
-    parser.add_argument('--lc_step_scale', default='log2', type=str, choices=['log2', 'log', 'log10', 'linear', 'log2_fine'],
-            help='Scale of progressive sampling of shards in a learning curve (log2, log, log10, linear) (default: log2).')
+    parser.add_argument('--lc_step_scale', default='log', type=str, choices=['log', 'linear'],
+            help='Scale of progressive sampling of shards in a learning curve (log2, log, log10, linear) (default: log).')
     parser.add_argument('--min_shard', default=128, type=int, help='The lower bound for the shard sizes (default: 128).')
     parser.add_argument('--max_shard', default=None, type=int, help='The upper bound for the shard sizes (default: None).')
-    parser.add_argument('--n_shards', default=None, type=int, help='Number of shards (used only when lc_step_scale is `linear` (default: None).')
+    parser.add_argument('--n_shards', default=5, type=int, help='Number of shards (default: 5).')
     parser.add_argument('--shards_arr', nargs='+', type=int, default=None, help='List of the actual shards in the learning curve plot (default: None).')
+    parser.add_argument('--save_model', action='store_true', help='Whether to trained models (default: False).')
     parser.add_argument('--plot_fit', action='store_true', help='Whether to generate the fit (default: False).')
     
     # HPs file
@@ -199,8 +200,6 @@ def run(args):
     #     OUTDIR = filepath/'./'
     # else:
     #     OUTDIR = Path(args['global_outdir']).absolute()
-    
-    
 
     clr_keras_kwargs = {'mode': args['clr_mode'], 'base_lr': args['clr_base_lr'],
                         'max_lr': args['clr_max_lr'], 'gamma': args['clr_gamma']}
