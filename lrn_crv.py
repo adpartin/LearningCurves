@@ -36,10 +36,28 @@ from pandas.api.types import is_string_dtype
 from sklearn.preprocessing import LabelEncoder
 from sklearn.externals import joblib
 
-import keras
-from keras.models import load_model
-from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
-from keras.utils import plot_model
+try:
+    import tensorflow as tf
+    # print(tf.__version__)
+    if int(tf.__version__.split('.')[0]) < 2:
+        # print('Load keras standalone package.')
+        import keras
+        from keras.models import load_model
+        from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+        from keras.utils import plot_model
+    else:
+        # print('Load keras from tf.')
+        # from tensorflow import keras
+        from tensorflow.python.keras.models import load_model
+        from tensorflow.python.keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+        from tensorflow.python.keras.utils import plot_model
+except:
+   print('Could not import tensorflow.')
+
+# import keras
+# from keras.models import load_model
+# from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+# from keras.utils import plot_model
 
 # Utils
 import ml_models

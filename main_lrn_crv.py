@@ -47,7 +47,11 @@ def parse_args(args):
     parser = argparse.ArgumentParser(description="Generate learning curves.")
 
     # Input data
-    parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to data and splits (default: None).')
+    # parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to data and splits (default: None).')
+    parser.add_argument('-dp', '--datapath', default=None, type=str, help='Full path to data (default: None).')
+
+    # Data splits
+    parser.add_argument('-sp', '--splitpath', default=None, type=str, help='Full path to a single set of data splits (default: None).')
 
     # Global outdir
     parser.add_argument('-gout', '--global_outdir', default=None, type=str, help='Gloabl outdir. In this path another dir is created for the run (default: None).')
@@ -174,6 +178,9 @@ def read_data_file(fpath, file_format='csv'):
             df = pd.read_parquet( fpath )
         else:
             raise ValueError('file format is not supported.')
+    else:
+        # sys.exit('Program terminated. You must specify a path to a data via the input argument -dp.')
+        assert fpath.exists(), 'The specified file path was not found: {fpath}.'
     return df    
     
     
@@ -190,19 +197,23 @@ def scale_fea(xdata, scaler_name='stnd', dtype=np.float32):
     cols = xdata.columns
     return pd.DataFrame( scaler.fit_transform(xdata), columns=cols, dtype=dtype )    
     
+
+def extract_subset_fea(df, fea_list, fea_sep='_'):
+    """ Extract features based feature prefix name. """
+    fea = [c for c in df.columns if (c.split(fea_sep)[0]) in fea_list]
+    return df[fea]
+    
+
+def get_print_fn(logger):
+    """ Returns the python 'print' function if logger is None. Othersiwe, returns logger.info. """
+    return print if logger is None else logger.info
+    
+            
     
 def run(args):
-    dirpath = verify_dirpath(args['dirpath'])
-
     # Global outdir
-    OUTDIR = filepath/'./' if args['global_outdir'] is None else Path(args['global_outdir']).absolute()
-    # if args['global_outdir'] is None:
-    #     OUTDIR = filepath/'./'
-    # else:
-    #     OUTDIR = Path(args['global_outdir']).absolute()
-
-    clr_keras_kwargs = {'mode': args['clr_mode'], 'base_lr': args['clr_base_lr'],
-                        'max_lr': args['clr_max_lr'], 'gamma': args['clr_gamma']}
+    gout = filepath/'./' if args['global_outdir'] is None else Path(args['global_outdir']).absolute()
+    os.makedirs(gout, exist_ok=True)
 
     # ML type ('reg' or 'cls')
     if 'reg' in args['model_name']:
@@ -213,75 +224,71 @@ def run(args):
         raise ValueError("model_name must contain 'reg' or 'cls'.")
 
     # Find out which metadata field was used for hard split (cell, drug, or none)
-    f = [f for f in dirpath.glob('*args.txt')][0]
-    with open(f) as f: lines = f.readlines()
+    splitpath = Path(args['splitpath'])
+    files = [f for f in splitpath.glob('data_splitter_args*')][0]
+    with open(files) as files: lines = files.readlines()
     def find_arg(lines, arg):
-        return [l.split(':')[-1].strip() for l in lines if arg+':' in l][0]
+        return [ll.split(':')[-1].strip() for ll in lines if arg+':' in ll][0]
     args['split_on'] = find_arg(lines, 'split_on').lower()
     args['split_seed'] = find_arg(lines, 'seed').lower()
-
+    # ... other appraoch
+    # nm = str(dirpath).split(os.sep)[-1]
+    # if 'none' in nm.lower():
+    #     args['split_on'] = 'none'
+    # elif 'cell' in nm.lower():
+    #     args['split_on'] = 'cell'
+    # elif 'drug' in nm.lower():
+    #     args['split_on'] = 'drug'
+    
 
     # -----------------------------------------------
     #       Load data and pre-proc
     # -----------------------------------------------
-    # TODO: allow to pass the original dataframe and then split into x, y, m
-    xdata = read_data_file( dirpath/'xdata.parquet', 'parquet' )
-    meta  = read_data_file( dirpath/'meta.parquet', 'parquet' )
+    data = read_data_file( args['datapath'], 'parquet' )
+    print('data.shape', data.shape)
+
+    # Get features (x), target (y), and meta
+    fea_list = args['cell_fea'] + args['drug_fea']
+    xdata = extract_subset_fea(data, fea_list=fea_list, fea_sep='_')
+    meta = data.drop(columns=xdata.columns)
     ydata = meta[[ args['target_name'] ]]
+    del data
 
-    tr_id = read_data_file( dirpath/'{}fold_tr_id.csv'.format(args['cv_folds']) )
-    vl_id = read_data_file( dirpath/'{}fold_vl_id.csv'.format(args['cv_folds']) )
-    te_id = read_data_file( dirpath/'{}fold_te_id.csv'.format(args['cv_folds']) )
+    # Scale fea
+    xdata = scale_fea(xdata=xdata, scaler_name=args['scaler'])  # scale features
 
-    # src = str(dirpath.parent).split('/')[-1].split('.')[0]
-    # src = str(dirpath.parent).split('/')[-1].split('.')[1]
-    s = [s for s in str(dirpath.parent).split('/') if 'data.' in s][0]
-    src = s.split('.')[1]
+    # Get split ids
+    tr_id = read_data_file( splitpath/'{}fold_tr_id.csv'.format(args['cv_folds']) )
+    vl_id = read_data_file( splitpath/'{}fold_vl_id.csv'.format(args['cv_folds']) )
+    te_id = read_data_file( splitpath/'{}fold_te_id.csv'.format(args['cv_folds']) )
+
+    src = [s for s in str(splitpath.parent).split('/') if 'data.' in s][0]
+    src = src.split('.')[1]
 
 
     # -----------------------------------------------
     #       Create outdir and logger
     # -----------------------------------------------
+    # TODO: instead of detailed rout name, consider to use split id
     if args['run_outdir'] is None:
-        args['outdir'] = create_outdir(OUTDIR, args, src)
+        args['outdir'] = create_outdir(gout, args, src)
     else:
-        args['outdir'] = OUTDIR / args['run_outdir']
+        args['outdir'] = gout / args['run_outdir']
         os.makedirs(args['outdir'])
-    # args['outdir'] = outdir
+    
+    # Logger
     lg = Logger(args['outdir']/'logfile.log')
     lg.logger.info(f'File path: {filepath}')
     lg.logger.info(f'\n{pformat(args)}')
     
     
     # -----------------------------------------------
-    #       Data preprocessing
-    # -----------------------------------------------
-    xdata = scale_fea(xdata=xdata, scaler_name=args['scaler'])  # scale features
-    
-    
-    # -----------------------------------------------
     #      ML model configs
     # -----------------------------------------------
-#     # TODO: consider creating a per-model file that lists the init and fit parametrs!
-#     # This will probably require the CANDLE functionality in terms of specifying input args.
-#     if args['model_name'] == 'lgb_reg':
-#         args['framework'] = 'lightgbm'
-#         init_kwargs = { 'n_estimators': args['gbm_trees'], 'max_depth': args['gbm_max_depth'],
-#                         'learning_rate': args['gbm_lr'], 'num_leaves': args['gbm_leaves'],
-#                         'n_jobs': args['n_jobs'], 'random_state': args['seed'] }
-#         fit_kwargs = {'verbose': False}
+    # CLR settings
+    clr_keras_kwargs = {'mode': args['clr_mode'], 'base_lr': args['clr_base_lr'],
+                        'max_lr': args['clr_max_lr'], 'gamma': args['clr_gamma']}
 
-#     elif args['model_name'] == 'rf_reg':
-#         args['framework'] = 'sklearn'
-#         init_kwargs = { 'n_estimators': args['rf_trees'], 'n_jobs': args['n_jobs'], 'random_state': args['seed'] }
-#         fit_kwargs = {}
-
-#     elif args['model_name'] == 'nn_reg0' or 'nn_reg1' or 'nn_reg_layer_less' or 'nn_reg_layer_more' or 'nn_reg_neuron_less' or 'nn_reg_neuron_more':
-#         args['framework'] = 'keras'
-#         init_kwargs = { 'input_dim': xdata.shape[1], 'dr_rate': args['dr_rate'], 'opt_name': args['opt'],
-#                         'lr': args['lr'], 'batchnorm': args['batchnorm'], 'logger': lg.logger }
-#         fit_kwargs = { 'batch_size': args['batch_size'], 'epochs': args['epochs'], 'verbose': 1 }
-        
     if args['model_name'] == 'lgb_reg':
         args['framework'] = 'lightgbm'
     elif args['model_name'] == 'rf_reg':

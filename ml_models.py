@@ -23,17 +23,37 @@ from sklearn.externals import joblib
 
 try:
     import tensorflow as tf
+    # print(tf.__version__)
+    if int(tf.__version__.split('.')[0]) < 2:
+        # print('Load keras standalone package.')
+        import keras
+        from keras.models import load_model
+        from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+        from keras.utils import plot_model
+    else:
+        # print('Load keras from tf.')
+        # from tensorflow import keras
+        from tensorflow.python.keras.models import load_model
+        from tensorflow.python.keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+        from tensorflow.python.keras.utils import plot_model
+
+        from tensorflow.python.keras import backend as K
+        from tensorflow.python.keras.layers import Input, Dense, Dropout, Activation, BatchNormalization, Embedding, Flatten, Lambda, merge
+        from tensorflow.python.keras import optimizers
+        from tensorflow.python.keras.optimizers import SGD, Adam, RMSprop, Adadelta
+        from tensorflow.python.keras.models import Sequential, Model, model_from_json, model_from_yaml
+        from tensorflow.python.keras.utils import np_utils, multi_gpu_model
 except:
    print('Could not import tensorflow.')
 
-import keras
-from keras import backend as K
-from keras.layers import Input, Dense, Dropout, Activation, BatchNormalization, Embedding, Flatten, Lambda, merge
-from keras import optimizers
-from keras.optimizers import SGD, Adam, RMSprop, Adadelta
-from keras.models import Sequential, Model, model_from_json, model_from_yaml
-from keras.utils import np_utils, multi_gpu_model
-# from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
+# # import keras
+# from keras import backend as K
+# from keras.layers import Input, Dense, Dropout, Activation, BatchNormalization, Embedding, Flatten, Lambda, merge
+# from keras import optimizers
+# from keras.optimizers import SGD, Adam, RMSprop, Adadelta
+# from keras.models import Sequential, Model, model_from_json, model_from_yaml
+# from keras.utils import np_utils, multi_gpu_model
+# # from keras.callbacks import ModelCheckpoint, CSVLogger, ReduceLROnPlateau, EarlyStopping, TensorBoard
 
 import lightgbm as lgb
 
