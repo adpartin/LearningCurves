@@ -63,6 +63,7 @@ def parse_args(args):
 
     parser.add_argument('--split_on', type=str, default=None, choices=['cell', 'drug'], help='Specify how to make a hard split. (default: None).')
     parser.add_argument('--n_splits', type=int, default=100, help='Number of splits to generate (default: 100).')  ##! new
+    parser.add_argument('--ml_task', type=int, default='reg', help='ML task (default: reg).')  ##! new
 
     # Other
     # parser.add_argument('--seed', type=int, default=0, help='Seed number (Default: 0)')
@@ -171,7 +172,8 @@ def run(args):
     te_method = cv_method 
 
     # TODO: this needs to be improved
-    mltype = 'reg'  # required for the splits (stratify in case of classification)
+    ##! mltype = 'reg'  # required for the splits (stratify in case of classification)
+    mltype = args['ml_task']  # required for the splits (stratify in case of classification)
     
     # -----------------------------------------------
     #       Create outdir
