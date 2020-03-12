@@ -48,7 +48,7 @@ def parse_args(args):
 
     # Input data
     # parser.add_argument('-dp', '--dirpath', default=None, type=str, help='Full path to data and splits (default: None).')
-    parser.add_argument('-dp', '--datapath', default=None, type=str, help='Full path to data (default: None).')
+    parser.add_argument('-dp', '--datapath', required=True, default=None, type=str, help='Full path to data (default: None).')
 
     # Data splits
     parser.add_argument('-sp', '--splitpath', default=None, type=str, help='Full path to a single set of data splits (default: None).')
@@ -255,7 +255,7 @@ def run(args):
     del data
 
     # Scale fea
-    xdata = scale_fea(xdata=xdata, scaler_name=args['scaler'])  # scale features
+    xdata = scale_fea(xdata=xdata, scaler_name=args['scaler'])
 
     # Get split ids
     tr_id = read_data_file( splitpath/'{}fold_tr_id.csv'.format(args['cv_folds']) )
